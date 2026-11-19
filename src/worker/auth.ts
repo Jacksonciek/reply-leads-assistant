@@ -42,9 +42,11 @@ export function setSessionCookie(c: Context, value: string) {
 }
 export function clearSessionCookie(c: Context) { deleteCookie(c, COOKIE, { path: '/' }); }
 
+export const authRequired = (env: Env) => env.REQUIRE_PASSWORD === 'true';
+
 export const requireAuth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
-  if (!(await verifySession(c.env.SESSION_SECRET, getCookie(c, COOKIE)))) {
-    return c.json({ error: { code: 'unauthorized', message: 'Silakan login terlebih dahulu' } }, 401);
+  if (authRequired(c.env) && !(await verifySession(c.env.SESSION_SECRET, getCookie(c, COOKIE)))) {
+    return c.json({ error: { code: 'unauthorized', message: 'Please sign in first' } }, 401);
   }
   await next();
 };

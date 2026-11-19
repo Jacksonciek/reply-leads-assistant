@@ -46,22 +46,22 @@ function h1Due(lead: Lead, now: Date): boolean {
 }
 
 export function resolveCase(lead: Lead, now: Date): CaseResult {
-  if (lead.state === 'NO_WHATSAPP') return res('X', 'Tidak ada WhatsApp');
+  if (lead.state === 'NO_WHATSAPP') return res('X', 'No WhatsApp');
   if (lead.opt_out || lead.state === 'OPTED_OUT') return res('X', 'Opt-out');
-  if (lead.state === 'DECLINED') return res('X', 'Menolak');
-  if (lead.phone_invalid) return res('X', 'Nomor tidak valid');
+  if (lead.state === 'DECLINED') return res('X', 'Declined');
+  if (lead.phone_invalid) return res('X', 'Invalid number');
 
   if (lead.event === 'ROADSHOW') {
     switch (lead.state) {
       case 'NEW':
-        return lead.visit_date ? res('A1', 'Belum dihubungi, tanggal ada', 'A1') : res('A2', 'Belum dihubungi, tanggal belum pasti', 'A2');
+        return lead.visit_date ? res('A1', 'Not contacted, date known', 'A1') : res('A2', 'Not contacted, date not decided', 'A2');
       case 'AWAITING_REPLY':
-        if (reminderDue(lead, now)) return lead.visit_date ? res('A-R1', 'Reminder jatuh tempo', 'A-R1') : res('A-R2', 'Reminder jatuh tempo', 'A-R2');
-        return res('WAIT', 'Menunggu balasan');
+        if (reminderDue(lead, now)) return lead.visit_date ? res('A-R1', 'Reminder due', 'A-R1') : res('A-R2', 'Reminder due', 'A-R2');
+        return res('WAIT', 'Waiting for reply');
       case 'REPLIED':
-        return res('CONV', 'Klien sudah membalas');
+        return res('CONV', 'Client has replied');
       case 'CONFIRMED':
-        return h1Due(lead, now) ? res('A-H1', 'Pengingat H-1', 'A-H1') : res('DONE', 'Terkonfirmasi');
+        return h1Due(lead, now) ? res('A-H1', 'Day-before reminder', 'A-H1') : res('DONE', 'Confirmed');
     }
   }
 
@@ -71,22 +71,22 @@ export function resolveCase(lead: Lead, now: Date): CaseResult {
       const hasSession = lead.session === 'S1' || lead.session === 'S2';
       const known = guestsKnown(lead);
       if (hasSession) {
-        if (lead.guests != null && lead.guests > 0) return res('B1', 'Sesi + jumlah tamu ada', 'B1');
-        if (lead.guests_bucket === '3+') return res('B2', 'Sesi ada, tamu 3+', 'B2', '3plus');
-        return res('B2', 'Sesi ada, tamu kosong', 'B2', 'empty');
+        if (lead.guests != null && lead.guests > 0) return res('B1', 'Session and guests known', 'B1');
+        if (lead.guests_bucket === '3+') return res('B2', 'Session known, 3+ guests', 'B2', '3plus');
+        return res('B2', 'Session known, guests empty', 'B2', 'empty');
       }
-      if (lead.info_only) return known ? res('B5', 'Info saja, tamu ada', 'B5') : res('B4', 'Info saja', 'B4');
-      if (known) return res('B3', 'Tamu ada, sesi belum', 'B3');
-      return res('B4', 'Sesi dan tamu belum ada', 'B4');
+      if (lead.info_only) return known ? res('B5', 'Info only, guests known', 'B5') : res('B4', 'Info only', 'B4');
+      if (known) return res('B3', 'Guests known, session not', 'B3');
+      return res('B4', 'Session and guests unknown', 'B4');
     }
     case 'AWAITING_REPLY':
-      return reminderDue(lead, now) ? res('B-R', 'Reminder jatuh tempo', 'B-R') : res('WAIT', 'Menunggu balasan');
+      return reminderDue(lead, now) ? res('B-R', 'Reminder due', 'B-R') : res('WAIT', 'Waiting for reply');
     case 'REPLIED':
-      return res('CONV', 'Klien sudah membalas');
+      return res('CONV', 'Client has replied');
     case 'CONFIRMED':
-      return h1Due(lead, now) ? res('B-H1', 'Pengingat H-1', 'B-H1') : res('DONE', 'Terkonfirmasi');
+      return h1Due(lead, now) ? res('B-H1', 'Day-before reminder', 'B-H1') : res('DONE', 'Confirmed');
   }
-  return res('X', 'State tidak dikenal');
+  return res('X', 'Unknown state');
 }
 
 export const PROACTIVE_CASES: CaseCode[] = ['A1', 'A2', 'A-R1', 'A-R2', 'A-H1', 'B1', 'B2', 'B3', 'B4', 'B5', 'B-R', 'B-H1'];

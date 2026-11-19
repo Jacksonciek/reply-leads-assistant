@@ -3,28 +3,67 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { EventCode } from '../../config/events';
 import { clickToSendLink, type LinkFormat } from '../domain/links';
 import { getSalam, isProactiveHours, shortWib } from '../domain/time';
-import { STATE_LABEL, type LeadState } from '../domain/types';
+import { type LeadState } from '../domain/types';
 
 export const EVENT_LABEL: Record<EventCode, string> = { ROADSHOW: 'Roadshow', JESSELTON: 'Jesselton' };
 
+export const INTENT_EN: Record<string, string> = {
+  CONFIRM_ATTEND: 'Confirms attendance', PROVIDE_DETAILS: 'Gives attendance details', CHANGE_SCHEDULE: 'Changes schedule',
+  DECLINE: 'Cannot attend', OPT_OUT: 'Asks to stop messages', ASK_EVENT_INFO: 'Asks about the event', REQUEST_INFO: 'Asks for info',
+  FORGOT_REGISTRATION: 'Forgot registering', ASK_PRODUCT: 'Asks about product (price/unit)', REQUEST_CALL: 'Asks for a call',
+  PA_TIME_GIVEN: 'Gives a time for the PA', SOURCE_QUESTION: 'Asks where we got the number', SUSPICIOUS: 'Suspicious / unsure',
+  COMPLAINT: 'Complaint', ASK_IF_BOT: 'Asks if this is a bot', SMALL_TALK: 'Small talk', OTHER: 'Other',
+  SOFT_ACK: 'Short reply (attendance unclear)', MEDIA: 'Client sent media',
+};
+
+/** UI labels. The Indonesian STATE_LABEL stays as-is because it is written to the Status column in Sheets. */
+export const STATE_EN: Record<LeadState, string> = {
+  NEW: 'Not contacted', AWAITING_REPLY: 'Awaiting reply', REPLIED: 'Replied', CONFIRMED: 'Confirmed',
+  DECLINED: 'Declined', OPTED_OUT: 'Opted out', NO_WHATSAPP: 'No WhatsApp',
+};
+
 export function EventChip({ event }: { event: EventCode }) {
-  return <span className={`chip ${event === 'ROADSHOW' ? 'bg-navy-soft text-navy' : 'bg-forest-soft text-forest'}`}>{EVENT_LABEL[event]}</span>;
+  return (
+    <span className={`chip ${event === 'ROADSHOW' ? 'bg-navy-soft text-navy' : 'bg-forest-soft text-forest'}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${event === 'ROADSHOW' ? 'bg-navy' : 'bg-forest'}`} />{EVENT_LABEL[event]}
+    </span>
+  );
+}
+
+export function EventDot({ event }: { event: EventCode }) {
+  return <span title={EVENT_LABEL[event]} className={`inline-block h-2 w-2 shrink-0 rounded-full ${event === 'ROADSHOW' ? 'bg-navy' : 'bg-forest'}`} />;
+}
+
+// A stable colour per client makes rows easy to tell apart at a glance.
+const AVATAR_COLORS: [string, string][] = [
+  ['#7c6cff', '#5b4cf5'], ['#ff7aa8', '#e9407a'], ['#ffa94d', '#f0670f'], ['#2fd3c0', '#0f9f8f'],
+  ['#4cc3ff', '#0ea5e9'], ['#b47cff', '#8b3ff2'], ['#ffcf4d', '#e0a100'], ['#5ee08a', '#16a34a'],
+];
+/** Initials avatar with a stable per-name colour. */
+export function Avatar({ name, event, size = 36 }: { name: string; event: EventCode; size?: number }) {
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const c = AVATAR_COLORS[h % AVATAR_COLORS.length];
+  const ini = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
+  return (
+    <span title={EVENT_LABEL[event]} style={{ width: size, height: size, fontSize: size * 0.36, background: `linear-gradient(140deg, ${c[0]}, ${c[1]})` }}
+      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]">{ini}</span>
+  );
 }
 
 const CASE_COLORS: Record<string, string> = {
-  X: 'bg-stone-200 text-stone-600', CONV: 'bg-amber-100 text-amber-800', WAIT: 'bg-stone-100 text-stone-600', DONE: 'bg-emerald-100 text-emerald-800',
+  X: 'bg-black/[0.05] text-ink-3', CONV: 'bg-amber-50 text-amber-800', WAIT: 'bg-black/[0.04] text-ink-2', DONE: 'bg-emerald-50 text-emerald-800',
 };
 export function CaseChip({ code }: { code: string }) {
-  const color = CASE_COLORS[code] ?? (code.includes('R') ? 'bg-orange-100 text-orange-800' : code.includes('H1') ? 'bg-purple-100 text-purple-800' : 'bg-sky-100 text-sky-800');
-  return <span className={`chip ${color}`}>{code}</span>;
+  const color = CASE_COLORS[code] ?? (code.includes('R') ? 'bg-orange-50 text-orange-800' : code.includes('H1') ? 'bg-violet-50 text-violet-800' : 'bg-sky-50 text-sky-800');
+  return <span className={`chip font-mono text-[11px] ${color}`}>{code}</span>;
 }
 
 const STATE_COLORS: Partial<Record<LeadState, string>> = {
-  NEW: 'bg-sky-100 text-sky-800', AWAITING_REPLY: 'bg-orange-100 text-orange-800', REPLIED: 'bg-amber-100 text-amber-800',
-  CONFIRMED: 'bg-emerald-100 text-emerald-800', DECLINED: 'bg-stone-200 text-stone-700', OPTED_OUT: 'bg-red-100 text-red-700', NO_WHATSAPP: 'bg-stone-200 text-stone-600',
+  NEW: 'bg-sky-50 text-sky-800', AWAITING_REPLY: 'bg-orange-50 text-orange-800', REPLIED: 'bg-amber-50 text-amber-800',
+  CONFIRMED: 'bg-emerald-50 text-emerald-800', DECLINED: 'bg-black/[0.05] text-ink-2', OPTED_OUT: 'bg-red-50 text-red-700', NO_WHATSAPP: 'bg-black/[0.05] text-ink-3',
 };
 export function StateChip({ state }: { state: LeadState }) {
-  return <span className={`chip ${STATE_COLORS[state] ?? ''}`}>{STATE_LABEL[state]}</span>;
+  return <span className={`chip ${STATE_COLORS[state] ?? ''}`}>{STATE_EN[state]}</span>;
 }
 
 export const fmtTime = (iso: string | null | undefined) => (iso ? shortWib(iso) : '');
@@ -50,8 +89,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastCtx.Provider value={show}>
       {children}
       {t && (
-        <div className={`fixed inset-x-4 bottom-24 z-50 mx-auto max-w-md rounded-lg px-4 py-3 text-sm text-white shadow-lg ${t.kind === 'err' ? 'bg-red-700' : 'bg-stone-900'}`} onClick={() => setT(null)}>
-          {t.msg}
+        <div role="status" aria-live="polite" key={t.msg + t.kind} className={`animate-sheet fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-sm items-center gap-2.5 rounded-2xl px-4 py-3 text-[14px] text-white shadow-[0_10px_30px_rgba(0,0,0,0.2)] sm:bottom-6 ${t.kind === 'err' ? 'bg-red-700' : 'bg-ink/95'}`} onClick={() => setT(null)}>
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.kind === 'err' ? 'bg-white' : 'bg-emerald-400'}`} />{t.msg}
         </div>
       )}
     </ToastCtx.Provider>
@@ -92,7 +131,7 @@ export function SendActions({ phone, text, proactive, linkFormat, disabled, onSe
   }, []);
 
   const guardHours = () => !proactive || isProactiveHours(new Date())
-    || window.confirm('Sekarang di luar jam 09.00–20.00 WIB. Pesan proaktif bisa mengganggu waktu istirahat klien. Tetap buka WhatsApp?');
+    || window.confirm('It is outside 09:00–20:00 WIB. A proactive message may disturb the client. Open WhatsApp anyway?');
 
   const open = () => {
     if (!guardHours()) return;
@@ -106,7 +145,7 @@ export function SendActions({ phone, text, proactive, linkFormat, disabled, onSe
   };
   const copy = async () => {
     const final = refreshSalam(text);
-    if (await copyText(final)) { toast('Teks disalin'); pending.current = final; } else toast('Gagal menyalin', 'err');
+    if (await copyText(final)) { toast('Copied'); pending.current = final; } else toast('Could not copy', 'err');
   };
   const confirmSent = async (final: string) => {
     setBusy(true);
@@ -116,16 +155,16 @@ export function SendActions({ phone, text, proactive, linkFormat, disabled, onSe
   return (
     <>
       <div className={`flex flex-wrap gap-2 ${compact ? '' : 'mt-3'}`}>
-        <button className="btn-wa flex-1" disabled={disabled || !phone} onClick={open}>Buka WhatsApp</button>
-        <button className="btn-ghost" disabled={disabled} onClick={copy}>Salin teks</button>
-        <button className="btn-ghost" disabled={disabled || busy} onClick={() => setAsk(refreshSalam(text))}>Tandai terkirim</button>
+        <button className="btn-wa flex-1" disabled={disabled || !phone} onClick={open}>Open WhatsApp</button>
+        <button className="btn-ghost" disabled={disabled} onClick={copy}>Copy</button>
+        <button className="btn-ghost" disabled={disabled || busy} onClick={() => setAsk(refreshSalam(text))}>Mark as sent</button>
       </div>
       {ask !== null && (
-        <Modal onClose={() => setAsk(null)} title="Sudah terkirim?">
-          <p className="text-sm text-stone-600">Bila pesan sudah Anda kirim dari WhatsApp, pesan akan dicatat di room.</p>
+        <Modal onClose={() => setAsk(null)} title="Was it sent?">
+          <p className="text-sm text-ink-2">Once you have sent it from WhatsApp, it will be recorded in this conversation.</p>
           <div className="mt-4 flex gap-2">
-            <button className="btn-primary flex-1" disabled={busy} onClick={() => confirmSent(ask)}>Ya, sudah terkirim</button>
-            <button className="btn-ghost" onClick={() => setAsk(null)}>Belum</button>
+            <button className="btn-primary flex-1" disabled={busy} onClick={() => confirmSent(ask)}>Yes, it was sent</button>
+            <button className="btn-ghost" onClick={() => setAsk(null)}>Not yet</button>
           </div>
         </Modal>
       )}
@@ -135,9 +174,9 @@ export function SendActions({ phone, text, proactive, linkFormat, disabled, onSe
 
 export function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-2 text-base font-semibold">{title}</h3>
+    <div className="animate-fade fixed inset-0 z-40 flex items-end justify-center bg-black/30 sm:items-center sm:p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="animate-sheet w-full max-w-md rounded-t-3xl bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_20px_60px_rgba(0,0,0,0.25)] sm:rounded-2xl sm:pb-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-2 text-[17px] font-semibold">{title}</h3>
         {children}
       </div>
     </div>
@@ -145,19 +184,23 @@ export function Modal({ title, children, onClose }: { title: string; children: R
 }
 
 export function Loading() {
-  return <div className="p-6 text-center text-sm text-stone-500">Memuat…</div>;
+  return (
+    <div className="space-y-3 p-1" aria-busy="true" aria-label="Loading">
+      <div className="skeleton h-6 w-40" /><div className="skeleton h-20 w-full" /><div className="skeleton h-20 w-full" />
+    </div>
+  );
 }
 
 export function ErrorBox({ error, onRetry }: { error: string; onRetry?: () => void }) {
   return (
-    <div className="card border-red-200 bg-red-50 text-sm text-red-800">
-      {error}
-      {onRetry && <button className="btn-ghost ml-2 mt-2" onClick={onRetry}>Coba lagi</button>}
+    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+      <span className="flex-1">{error}</span>
+      {onRetry && <button className="btn-ghost" onClick={onRetry}>Try again</button>}
     </div>
   );
 }
 
 export function Warnings({ items }: { items: string[] }) {
   if (!items.length) return null;
-  return <ul className="mt-2 space-y-1">{items.map((w) => <li key={w} className="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900">⚠ {w}</li>)}</ul>;
+  return <ul className="mt-2 space-y-1">{items.map((w) => <li key={w} className="rounded-lg border border-amber-200/70 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">{w}</li>)}</ul>;
 }

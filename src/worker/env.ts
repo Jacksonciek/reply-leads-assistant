@@ -3,6 +3,8 @@ export interface Env {
   KV: KVNamespace;
   ADMIN_PASSWORD: string;
   SESSION_SECRET: string;
+  /** 'true' = wajib login dengan ADMIN_PASSWORD. Selain itu login dilewati (sementara). */
+  REQUIRE_PASSWORD?: string;
   STORE?: string; // 'sheets' | 'memory'
   SHEET_ID?: string;
   GOOGLE_SA_EMAIL?: string;

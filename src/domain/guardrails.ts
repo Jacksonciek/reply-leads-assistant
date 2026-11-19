@@ -59,10 +59,10 @@ export function checkDraft(text: string, ctx: GuardrailCtx = {}): GuardrailResul
 }
 
 export const FLAG_LABEL: Record<string, string> = {
-  currency: 'menyebut mata uang', amount: 'menyebut angka/harga', phone_offer: 'menawarkan telepon dari saya',
-  link: 'link selain link proyek', phone_number: 'nomor telepon', email: 'alamat email', human_claim: 'mengaku manusia tanpa bantuan sistem',
-  too_long: 'terlalu panjang (> 600 karakter)', emoji: 'lebih dari satu emoji', empty: 'draft kosong',
-  opt_out_offer: 'menawarkan klien berhenti dihubungi', attendance_claim: 'menyatakan kehadiran sudah dicatat padahal belum jelas',
+  currency: 'mentions a currency', amount: 'mentions a number/price', phone_offer: 'offers a phone call from me',
+  link: 'link other than the project link', phone_number: 'phone number', email: 'email address', human_claim: 'claims to be human without help',
+  too_long: 'too long (> 600 characters)', emoji: 'more than one emoji', empty: 'empty draft',
+  opt_out_offer: 'offers the client to stop messages', attendance_claim: 'claims attendance is recorded when it is not clear',
 };
 
 export function flagLabel(f: string): string {

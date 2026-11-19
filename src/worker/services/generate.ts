@@ -79,7 +79,7 @@ export function buildLlmPayload(lead: Lead, messages: Message[], newMsgs: Messag
 export async function generateReply(input: GenerateInput): Promise<GenerateResult> {
   const { lead, messages, templates, events, now } = input;
   const newMsgs = pendingInbound(messages);
-  if (!newMsgs.length) throw new GenerateError('no_inbound', 'Belum ada pesan klien baru. Tempel balasan klien terlebih dahulu.');
+  if (!newMsgs.length) throw new GenerateError('no_inbound', 'No new client message yet. Paste the client reply first.');
   const joined = newMsgs.map((m) => m.text).join('\n');
   const base: Omit<GenerateResult, 'intent' | 'draft_text' | 'draft_source' | 'template_code'> = {
     confidence: 1, reason: '', extracted: {}, original_text: '', flags: [], notes: [], suggestion: {},
@@ -95,17 +95,17 @@ export async function generateReply(input: GenerateInput): Promise<GenerateResul
 
   // 1. Opt-out regex: no LLM.
   if (isOptOut(joined)) {
-    return fixed('OPT_OUT', 'OPT_OUT', { reason: 'Kata kunci berhenti dihubungi terdeteksi', suggestion: { state: 'OPTED_OUT', opt_out: true }, flags: ['opt_out'] });
+    return fixed('OPT_OUT', 'OPT_OUT', { reason: 'Opt-out keyword detected', suggestion: { state: 'OPTED_OUT', opt_out: true }, flags: ['opt_out'] });
   }
   // 2. Short acknowledgement.
   if (isShortAck(joined)) {
     if (lead.state === 'CONFIRMED') {
-      return { ...base, intent: 'SMALL_TALK', draft_text: '', draft_source: 'NONE', template_code: '', reason: 'Balasan penutup dari klien yang sudah terkonfirmasi', notes: ['Tidak perlu dibalas'] };
+      return { ...base, intent: 'SMALL_TALK', draft_text: '', draft_source: 'NONE', template_code: '', reason: 'Closing reply from an already confirmed client', notes: ['No reply needed'] };
     }
     const code = lead.event === 'ROADSHOW' ? 'SOFT_CONFIRM-A' : 'SOFT_CONFIRM-B';
     const hasData = lead.event === 'ROADSHOW' ? !!lead.visit_date : lead.session === 'S1' || lead.session === 'S2';
     if (hasData) {
-      return { ...base, intent: 'SOFT_ACK', draft_text: render(code), draft_source: 'TEMPLATE', template_code: code, reason: 'Balasan pendek bukan konfirmasi hadir: tanyakan kepastian', notes: ['Status tidak berubah'] };
+      return { ...base, intent: 'SOFT_ACK', draft_text: render(code), draft_source: 'TEMPLATE', template_code: code, reason: 'Short reply, not an attendance confirmation: ask to confirm', notes: ['Status unchanged'] };
     }
     // No date/session yet: LLM drafts the same pattern asking for it.
     input = { ...input, instruction: [input.instruction, 'Klien hanya membalas singkat (belum menyatakan hadir). Buat draft pola SOFT_CONFIRM: ucapkan sama-sama lalu tanyakan dengan sopan ' + (lead.event === 'ROADSHOW' ? 'hari kunjungan yang dipilih (23–29 November)' : 'sesi yang dipilih (11.00–13.00 atau 15.00–17.00)') + '. Jangan menulis bahwa kehadiran sudah dicatat.'].filter(Boolean).join(' ') };
@@ -113,15 +113,15 @@ export async function generateReply(input: GenerateInput): Promise<GenerateResul
   // 3. Media.
   if (hasMedia(joined)) {
     base.flags.push('media');
-    base.notes.push('Klien mengirim media, cek di WhatsApp');
+    base.notes.push('Client sent media, check WhatsApp');
     if (joined.replace(/<[^>]*>|\b\w+ omitted\b/gi, '').trim().length < 3) {
-      return fixed('MEDIA', 'HOLD', { reason: 'Klien hanya mengirim media' });
+      return fixed('MEDIA', 'HOLD', { reason: 'Client only sent media' });
     }
   }
 
   // 4. LLM.
   if (!input.llm) {
-    return fixed('OTHER', 'HOLD', { reason: 'LLM belum dikonfigurasi (GEMINI_API_KEY kosong)', flags: [...base.flags, 'llm_unavailable'], notes: [...base.notes, 'LLM tidak tersedia: memakai teks HOLD'] });
+    return fixed('OTHER', 'HOLD', { reason: 'LLM not configured (GEMINI_API_KEY is empty)', flags: [...base.flags, 'llm_unavailable'], notes: [...base.notes, 'LLM unavailable: using the HOLD text'] });
   }
   const payload = buildLlmPayload(lead, messages, newMsgs, events, input.faqs, input.instruction);
   let out: LlmOutput & { model: string };
@@ -130,7 +130,7 @@ export async function generateReply(input: GenerateInput): Promise<GenerateResul
   } catch (e) {
     const quota = e instanceof LlmError && e.status === 429;
     return fixed('OTHER', 'HOLD', {
-      reason: quota ? 'Kuota Gemini habis (429)' : `LLM gagal: ${(e as Error).message.slice(0, 120)}`,
+      reason: quota ? 'Gemini quota exhausted (429)' : `LLM failed: ${(e as Error).message.slice(0, 120)}`,
       flags: [...base.flags, quota ? 'llm_quota' : 'llm_error'],
       notes: [...base.notes, quota ? 'Kuota Gemini habis. Template dan teks tetap tetap bisa dipakai.' : 'LLM gagal: memakai teks HOLD'],
       llm_payload: payload,
@@ -170,7 +170,7 @@ export async function generateReply(input: GenerateInput): Promise<GenerateResul
       res.template_code = code;
       res.draft_text = r.text ?? render('HOLD');
       if (!r.text) res.template_code = 'HOLD';
-      res.notes.push('Draft LLM ditolak guardrail dan diganti teks tetap');
+      res.notes.push('LLM draft rejected by guardrail and replaced with fixed text');
     }
   }
   return res;

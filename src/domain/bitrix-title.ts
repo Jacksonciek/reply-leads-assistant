@@ -31,7 +31,7 @@ export function parseBitrixTitle(title: string): BitrixParse {
     event: null, full_name: name, call_name: cn.callName, call_name_needs_review: cn.needsReview,
     agent_name: cn.agentName, source: '', visit_date: null, visit_date_label: '', warnings,
   };
-  if (!name) warnings.push({ field: 'full_name', message: 'Nama tidak ditemukan' });
+  if (!name) warnings.push({ field: 'full_name', message: 'Name not found' });
 
   const ev = (parts[1] ?? '').toLowerCase();
   if (/roadshow|pameran/.test(ev)) { res.event = 'ROADSHOW'; res.source = 'Agent'; }
@@ -40,26 +40,26 @@ export function parseBitrixTitle(title: string): BitrixParse {
     const after = ev.split('-').slice(1).join('-').trim();
     if (/^web(site)?\b/.test(after)) res.source = 'Website';
     else if (/^(meta|fb|ig|facebook|instagram)\b/.test(after)) res.source = 'Meta';
-    else warnings.push({ field: 'source', message: `Sumber tidak dikenali: "${after || '(kosong)'}"` });
-  } else warnings.push({ field: 'event', message: `Acara tidak dikenali: "${parts[1] ?? ''}"` });
+    else warnings.push({ field: 'source', message: `Unknown source: "${after || '(kosong)'}"` });
+  } else warnings.push({ field: 'event', message: `Unknown event: "${parts[1] ?? ''}"` });
 
   const d = (parts[2] ?? '').trim();
-  if (parts.length > 3) warnings.push({ field: 'title', message: 'Judul memiliki lebih dari 3 bagian' });
+  if (parts.length > 3) warnings.push({ field: 'title', message: 'Title has more than 3 parts' });
   if (!UNDECIDED.test(d)) {
     const m = d.match(/^(\d{1,2})\s*\/\s*(\d{1,2})$/);
-    if (!m) warnings.push({ field: 'visit_date', message: `Tanggal tidak dikenali: "${d}"` });
+    if (!m) warnings.push({ field: 'visit_date', message: `Unrecognised date: "${d}"` });
     else if (res.event) {
       const year = EVENTS[res.event].year;
       const iso = `${year}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
       const valid = !Number.isNaN(Date.parse(`${iso}T00:00:00Z`)) && Number(m[2]) <= 12;
-      if (!valid) warnings.push({ field: 'visit_date', message: `Tanggal tidak valid: "${d}"` });
+      if (!valid) warnings.push({ field: 'visit_date', message: `Invalid date: "${d}"` });
       else if (res.event === 'ROADSHOW') {
         const w = roadshowDateWarning(iso);
         if (w) warnings.push({ field: 'visit_date', message: w });
         res.visit_date = iso;
         res.visit_date_label = dateLabel(iso);
       } else if (iso !== EVENTS.JESSELTON.start_date) {
-        warnings.push({ field: 'visit_date', message: `Jesselton hanya tanggal 28/11, tertulis "${d}"` });
+        warnings.push({ field: 'visit_date', message: `Jesselton is only on 28/11, found "${d}"` });
       }
     }
   }

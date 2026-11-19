@@ -13,7 +13,7 @@ export function parseRoadshowDate(raw: unknown): { date: string | null; warning?
   const s = clean(raw);
   if (!s || /belum\s*pasti|tbc|^-$|^\?$/i.test(s)) return { date: null };
   const m = s.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
-  if (!m) return { date: null, warning: `Tanggal tidak dikenali: "${s}"` };
+  if (!m) return { date: null, warning: `Unrecognised date: "${s}"` };
   const mi = MONTH_NAMES.findIndex((n) => n.toLowerCase().startsWith(m[2].toLowerCase().slice(0, 3)));
   if (mi < 0) return { date: null, warning: `Bulan tidak dikenali: "${s}"` };
   const date = `${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
@@ -62,10 +62,10 @@ function base(event: EventCode, row: Record<string, unknown>, _rowRef: string): 
   const full_name = clean(row['Name']);
   const cn = deriveCallName(full_name);
   const ph = normalizePhone(String(row['Phone number'] ?? ''));
-  if (ph.invalid) warnings.push('Nomor WhatsApp tidak valid');
-  if (cn.needsReview) warnings.push('Nama sapaan perlu dicek');
+  if (ph.invalid) warnings.push('Invalid WhatsApp number');
+  if (cn.needsReview) warnings.push('Greeting name needs checking');
   const gender = normalizeGender(row['Gender']);
-  if (!gender) warnings.push('Gender kosong, sapaan memakai "Bapak/Ibu"');
+  if (!gender) warnings.push('Gender empty, greeting uses "Bapak/Ibu"');
   const lead = emptyLead({
     event, full_name, call_name: cn.callName, call_name_needs_review: cn.needsReview, agent_name: cn.agentName,
     gender, phone_e164: ph.phone, phone_invalid: ph.invalid, email: clean(row['Email']),

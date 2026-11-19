@@ -103,7 +103,7 @@ describe('CROSS_EVENT and quick renders', () => {
     expect(n.text).toContain('Terima kasih juga sudah mendaftar untuk Medan Property Roadshow, Pak. Acara ini terpisah dari Private Property Preview Jesselton Courtyard');
     expect(n.text).toContain('Bila Bapak sudah memiliki gambaran');
     expect(n.text).not.toContain('Perkenalkan');
-    expect(n.warnings.join()).toContain('Terdaftar juga di');
+    expect(n.warnings.join()).toContain('Also registered for');
   });
   it('Jesselton after Roadshow: unapproved variant falls back with a warning', () => {
     const r = rl({ phone_e164: '6281299990000', first_sent_at: NOW.toISOString(), state: 'AWAITING_REPLY' });
@@ -160,7 +160,7 @@ describe('dashboard', () => {
     const d = v(rl({ lead_id: 'd', state: 'OPTED_OUT', opt_out: true }), [msg('IN', 'z', 2)]);
     const e = v(rl({ lead_id: 'e', state: 'AWAITING_REPLY', needs_pa: true, call_name_needs_review: true }));
     const dash = buildDashboard([a, b, c, d, e], NOW);
-    expect(dash.unanswered.map((x) => [x.lead_id, x.reason])).toEqual([['b', 'Tempel isi chat terakhir'], ['a', 'Pesan klien belum dibalas']]);
+    expect(dash.unanswered.map((x) => [x.lead_id, x.reason])).toEqual([['b', 'Paste the latest chat'], ['a', 'Client message not answered']]);
     expect(dash.first_messages.map((x) => x.lead_id)).toEqual(['c']);
     expect(dash.reminders.map((x) => x.lead_id)).toEqual(['e']);
     expect(dash.pa.map((x) => x.lead_id)).toEqual(['e']);
@@ -228,7 +228,7 @@ describe('generateReply pipeline', () => {
     expect(r).toMatchObject({ template_code: 'HOLD', flags: ['llm_quota'] });
   });
   it('no inbound -> error', async () => {
-    await expect(run(rl(), [['OUT', 'halo']], null)).rejects.toThrow(/Belum ada pesan klien/);
+    await expect(run(rl(), [['OUT', 'halo']], null)).rejects.toThrow(/No new client message/);
   });
   it('instruction and only new client messages are sent as pesan_baru', async () => {
     const calls: string[] = [];

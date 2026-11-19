@@ -115,7 +115,7 @@ export function routeIntent(c: Classification, lead: Lead): Routing {
     case 'COMPLAINT':
       return attention();
     case 'SMALL_TALK':
-      return r({ draft: { kind: 'NONE', note: 'Tidak perlu dibalas' } });
+      return r({ draft: { kind: 'NONE', note: 'No reply needed' } });
   }
   if (c.sentiment === 'negative' && c.intent !== 'DECLINE') return attention();
 
@@ -128,7 +128,7 @@ export function routeIntent(c: Classification, lead: Lead): Routing {
       if (konfComplete(merged) && c.confidence >= CONFIDENCE_MIN) {
         return r({ draft: { kind: 'TEMPLATE', code: lead.event === 'ROADSHOW' ? 'KONF-A' : 'KONF-B' }, suggestion: sug, notes: ['Setelah KONF ditandai terkirim, status menjadi Terkonfirmasi'] });
       }
-      return r({ draft: { kind: 'LLM' }, suggestion: sug, notes: ['Data belum lengkap atau kurang yakin: draft menanyakan bagian yang kurang'] });
+      return r({ draft: { kind: 'LLM' }, suggestion: sug, notes: ['Details incomplete or uncertain: the draft asks for what is missing'] });
     }
     case 'DECLINE':
       return r({ draft: { kind: 'FIXED', code: 'DECLINE' }, suggestion: { state: 'DECLINED' } });
@@ -141,13 +141,13 @@ export function routeIntent(c: Classification, lead: Lead): Routing {
     case 'ASK_EVENT_INFO':
       return c.answer_in_kb
         ? r({ draft: { kind: 'LLM' } })
-        : r({ draft: { kind: 'FIXED', code: 'HOLD' }, notes: ['Jawaban belum ada di FAQ'] });
+        : r({ draft: { kind: 'FIXED', code: 'HOLD' }, notes: ['Answer not in Knowledge (FAQ) yet'] });
     case 'REQUEST_INFO':
     case 'FORGOT_REGISTRATION':
       if (lead.event === 'ROADSHOW') {
-        return r({ draft: { kind: 'TEMPLATE', code: c.intent === 'FORGOT_REGISTRATION' ? 'A3' : 'A4', attachPoster: true }, notes: ['Lampirkan e-invite (poster) saat mengirim'] });
+        return r({ draft: { kind: 'TEMPLATE', code: c.intent === 'FORGOT_REGISTRATION' ? 'A3' : 'A4', attachPoster: true }, notes: ['Attach the e-invite (poster) when sending'] });
       }
-      return r({ draft: { kind: 'LLM' }, notes: [guestsKnown(lead) ? 'Draft mengikuti pola B5' : 'Draft mengikuti pola B4'] });
+      return r({ draft: { kind: 'LLM' }, notes: [guestsKnown(lead) ? 'Draft follows pattern B5' : 'Draft follows pattern B4'] });
     default:
       return r({ draft: { kind: 'LLM' } });
   }

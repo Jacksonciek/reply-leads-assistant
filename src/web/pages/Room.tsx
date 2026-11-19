@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 import { sessionInfo } from '../../../config/events';
 import type { LeadView } from '../../domain/dashboard';
 import { flagLabel } from '../../domain/guardrails';
 import type { LinkFormat } from '../../domain/links';
 import type { NextMessage } from '../../domain/next-message';
 import { parseWaPaste, type PastedMessage } from '../../domain/parse-wa-paste';
-import { INTENT_LABEL, type AnyIntent } from '../../domain/routing';
+import type { AnyIntent } from '../../domain/routing';
 import { DATE_OPTIONS } from '../../domain/sheet-row';
-import { guestsLabel, STATE_LABEL, type Draft, type LeadState, type Message } from '../../domain/types';
+import { guestsLabel, type Draft, type LeadState, type Message } from '../../domain/types';
 import { useConfig } from '../App';
 import { api } from '../api';
 import {
-  CaseChip, copyText, ErrorBox, EventChip, fmtTime, Loading, Modal, SendActions, StateChip, useToast, Warnings,
+  Avatar, CaseChip, copyText, INTENT_EN, STATE_EN, ErrorBox, EventChip, fmtTime, Loading, Modal, SendActions, StateChip, useToast, Warnings,
 } from '../shared';
+import type { WorkspaceCtx } from './Leads';
 
 interface RoomData {
   lead: LeadView; messages: Message[]; draft: Draft | null; next: NextMessage; contact_name: string;
@@ -25,18 +26,29 @@ const QUICK: Record<string, string[]> = {
   ROADSHOW: ['HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'KONF-A', 'SOFT_CONFIRM-A', 'REMINDER_PA-A', 'A3', 'A4', 'POSTER-A'],
   JESSELTON: ['HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'KONF-B', 'SOFT_CONFIRM-B', 'REMINDER_PA-B', 'B4', 'B5', 'POSTER-B'],
 };
-const SOURCE_LABEL: Record<string, string> = { PASTED: 'tempelan', TEMPLATE: 'template', LLM_DRAFT: 'draft AI', EDITED_DRAFT: 'draft diedit', MANUAL: 'manual' };
+const SOURCE_LABEL: Record<string, string> = { PASTED: 'pasted', TEMPLATE: 'template', LLM_DRAFT: 'AI draft', EDITED_DRAFT: 'edited draft', MANUAL: 'manual' };
+// Hints are passed to the model as instructions; the reply itself stays in Indonesian.
+const INSTRUCTION_HINTS = ['Shorter', 'More formal', 'More casual', 'Less salesy', 'Only answer the question', 'Invite them to attend in person'];
+
+type Patch = (b: Record<string, unknown>, m?: string) => Promise<void>;
 
 export function RoomPage() {
   const { id } = useParams();
+  const { refreshList } = useOutletContext<WorkspaceCtx>();
   const [sp, setSp] = useSearchParams();
   const toast = useToast();
   const [d, setD] = useState<RoomData | null>(null);
   const [err, setErr] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [details, setDetails] = useState(false);
 
-  const load = useCallback(() => { setErr(''); return api<RoomData>(`/api/leads/${id}`).then(setD).catch((e) => setErr(e.message)); }, [id]);
-  useEffect(() => { load(); }, [load]);
+  const load = useCallback(async () => {
+    setErr('');
+    try { setD(await api<RoomData>(`/api/leads/${id}`)); } catch (e) { setErr((e as Error).message); }
+  }, [id]);
+  // Changes in the room also change the sidebar preview.
+  const reload = useCallback(async () => { await load(); refreshList(); }, [load, refreshList]);
+  useEffect(() => { setD(null); setDetails(false); load(); }, [load]);
 
   const generate = useCallback(async (instruction?: string) => {
     setGenerating(true);
@@ -47,67 +59,411 @@ export function RoomPage() {
     if (sp.get('generate') === '1' && d) { setSp({}, { replace: true }); generate(); }
   }, [sp, d, generate, setSp]);
 
-  if (err) return <ErrorBox error={err} onRetry={load} />;
-  if (!d) return <Loading />;
+  if (err) return <div className="p-4"><ErrorBox error={err} onRetry={load} /></div>;
+  if (!d) return <div className="p-4"><Loading /></div>;
   const { lead } = d;
-  const accent = lead.event === 'ROADSHOW' ? 'border-t-navy' : 'border-t-forest';
 
-  const patch = async (body: Record<string, unknown>, msg = 'Tersimpan') => {
-    try { await api(`/api/leads/${lead.lead_id}`, { method: 'PATCH', body }); toast(msg); await load(); } catch (e) { toast((e as Error).message, 'err'); }
+  const patch: Patch = async (body, msg = 'Saved') => {
+    try { await api(`/api/leads/${lead.lead_id}`, { method: 'PATCH', body }); toast(msg); await reload(); } catch (e) { toast((e as Error).message, 'err'); }
   };
 
   return (
-    <div className="space-y-3">
-      <Header d={d} accent={accent} patch={patch} />
-      <History d={d} reload={load} />
-      <NextPanel d={d} reload={load} generate={generate} generating={generating} />
-      <PasteBox d={d} reload={load} generate={generate} />
-      <Actions d={d} patch={patch} />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="glass sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-black/[0.06] px-3 md:static">
+        <Link to="/leads" className="btn-quiet -ml-1 h-9 min-h-9 px-2 md:hidden" aria-label="Back to leads">‹ Leads</Link>
+        <Avatar name={lead.call_name || lead.full_name} event={lead.event} size={34} />
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="truncate text-[15px] font-semibold">{lead.gender || 'Bapak/Ibu'} {lead.call_name || lead.full_name}</div>
+          <div className="truncate text-xs text-ink-3">{lead.event === 'ROADSHOW' ? 'Roadshow' : 'Jesselton'} · {STATE_EN[lead.state as LeadState]}{lead.phone_e164 && ` · +${lead.phone_e164}`}</div>
+        </div>
+        {lead.needs_attention && <span className="chip hidden bg-red-50 text-red-700 sm:inline-flex">Needs attention</span>}
+        <button className={`btn-quiet h-9 min-h-9 xl:hidden ${details ? 'bg-black/[0.06] text-ink' : ''}`} onClick={() => setDetails((x) => !x)} aria-expanded={details}>Details</button>
+      </header>
+      <div className="relative flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Timeline d={d} reload={reload} generate={generate} generating={generating} />
+          <Composer d={d} reload={reload} generate={generate} generating={generating} />
+        </div>
+        {details && <div className="animate-fade fixed inset-0 z-30 bg-black/20 xl:hidden" onClick={() => setDetails(false)} />}
+        <aside className={`${details ? 'animate-sheet fixed inset-y-0 right-0 z-40 flex w-[min(360px,92vw)] shadow-[0_0_40px_rgba(0,0,0,0.15)]' : 'hidden'} flex-col overflow-y-auto border-l border-line bg-surface xl:static xl:z-auto xl:flex xl:w-[320px] xl:shadow-none`}>
+          <div className="flex items-center justify-between px-4 pt-4 xl:hidden">
+            <span className="eyebrow">Lead details</span>
+            <button className="btn-quiet h-8 min-h-8 px-2" onClick={() => setDetails(false)}>Close</button>
+          </div>
+          <Profile d={d} patch={patch} />
+          <Actions d={d} patch={patch} />
+        </aside>
+      </div>
     </div>
   );
 }
 
-function Header({ d, accent, patch }: { d: RoomData; accent: string; patch: (b: Record<string, unknown>, m?: string) => Promise<void> }) {
+// ---------- timeline ----------
+
+function dayLabel(iso: string) {
+  const d = new Date(iso), today = new Date();
+  const y = new Date(today); y.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void>; generating: boolean }) {
+  const toast = useToast();
+  const [editing, setEditing] = useState<Message | null>(null);
+  const end = useRef<HTMLDivElement>(null);
+  const key = `${d.messages.length}:${d.draft?.draft_id ?? ''}:${generating}`;
+  useLayoutEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [key]);
+
+  let lastDay = '';
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+      <div className="mx-auto max-w-[720px] space-y-1.5">
+        {!d.messages.length && (
+          <div className="py-10 text-center">
+            <p className="text-[15px] font-medium">No messages yet</p>
+            <p className="mx-auto mt-1 max-w-xs text-sm text-ink-3">
+              {d.lead.state === 'REPLIED' ? 'Paste the latest chat from WhatsApp below.' : 'Start with the first message below, or paste the client reply.'}
+            </p>
+          </div>
+        )}
+        {d.messages.map((m) => {
+          const day = dayLabel(m.sent_at);
+          const showDay = day !== lastDay; lastDay = day;
+          const out = m.direction === 'OUT';
+          return (
+            <div key={m.msg_id}>
+              {showDay && <div className="py-3 text-center"><span className="eyebrow rounded-full bg-black/[0.04] px-2.5 py-1 normal-case tracking-normal">{day}</span></div>}
+              <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
+                <button onClick={() => setEditing(m)} title="Edit or delete message"
+                  className={`group max-w-[82%] whitespace-pre-wrap break-words rounded-[18px] px-3.5 py-2 text-left text-[14.5px] leading-[1.45] transition-transform duration-100 active:scale-[0.99] ${out ? 'rounded-br-md bg-accent text-white' : 'rounded-bl-md border border-line bg-surface'}`}>
+                  {m.text}
+                  <span className={`mt-1 flex items-center justify-end gap-1.5 text-[10.5px] ${out ? 'text-white/75' : 'text-ink-3'}`}>
+                    {out ? <>Sent · {SOURCE_LABEL[m.source] ?? m.source}{m.template_code && ` · ${m.template_code}`}</> : 'Incoming'}
+                    <span className="tabular-nums">{fmtTime(m.sent_at).split(' ').pop()}</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        <DraftCard d={d} reload={reload} generate={generate} generating={generating} />
+        <div ref={end} className="h-1" />
+      </div>
+      {editing && <EditMessage m={editing} onClose={() => setEditing(null)} onDone={async (msg) => { setEditing(null); toast(msg); await reload(); }} />}
+    </div>
+  );
+}
+
+function EditMessage({ m, onClose, onDone }: { m: Message; onClose: () => void; onDone: (msg: string) => void }) {
+  const toast = useToast();
+  const [text, setText] = useState(m.text);
+  const [dir, setDir] = useState(m.direction);
+  const save = async () => {
+    try { await api(`/api/messages/${m.msg_id}`, { method: 'PATCH', body: { text, direction: dir } }); onDone('Message updated'); } catch (e) { toast((e as Error).message, 'err'); }
+  };
+  const del = async () => {
+    if (!window.confirm('Delete this message from the conversation?')) return;
+    try { await api(`/api/messages/${m.msg_id}`, { method: 'DELETE' }); onDone('Message deleted'); } catch (e) { toast((e as Error).message, 'err'); }
+  };
+  return (
+    <Modal title="Edit message" onClose={onClose}>
+      <textarea className="input min-h-32" value={text} onChange={(e) => setText(e.target.value)} />
+      <div className="segmented mt-3 flex">
+        <button className={`seg flex-1 ${dir === 'IN' ? 'seg-on' : ''}`} onClick={() => setDir('IN')}>From client</button>
+        <button className={`seg flex-1 ${dir === 'OUT' ? 'seg-on' : ''}`} onClick={() => setDir('OUT')}>From me</button>
+      </div>
+      <div className="mt-4 flex gap-2"><button className="btn-primary flex-1" onClick={save}>Save</button><button className="btn-danger" onClick={del}>Delete</button></div>
+    </Modal>
+  );
+}
+
+/** The pending reply lives at the end of the conversation, where it will land once sent. */
+function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void>; generating: boolean }) {
+  const { lead, next, draft } = d;
+  const toast = useToast();
+  const lastIsIn = lead.room.last_dir === 'IN';
+  const [text, setText] = useState('');
+  const [code, setCode] = useState<string | undefined>();
+  const [saving, setSaving] = useState(false);
+  const ta = useRef<HTMLTextAreaElement>(null);
+
+  const mode: 'draft' | 'template' | 'none' = draft ? 'draft' : next.template_code && !lastIsIn ? 'template' : 'none';
+  useEffect(() => {
+    if (draft) { setText(draft.draft_text); setCode(draft.template_code || undefined); }
+    else if (mode === 'template') { setText(next.text ?? ''); setCode(next.template_code ?? undefined); }
+    else { setText(''); setCode(undefined); }
+  }, [draft?.draft_id, next.text, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 420)}px`; } }, [text]);
+
+  // Quick-insert lives in the composer; it hands text over through this event.
+  useEffect(() => {
+    const h = (e: Event) => { const { text: t, code: c } = (e as CustomEvent).detail; setText(t); setCode(c); };
+    window.addEventListener('room:insert', h);
+    return () => window.removeEventListener('room:insert', h);
+  }, []);
+
+  if (generating) {
+    return (
+      <div className="flex justify-end pt-2" aria-live="polite">
+        <div className="w-[min(82%,520px)] space-y-2 rounded-[18px] rounded-br-md border border-dashed border-accent/40 bg-surface p-4">
+          <span className="eyebrow text-accent">Writing draft…</span>
+          <div className="skeleton h-3 w-11/12" /><div className="skeleton h-3 w-9/12" /><div className="skeleton h-3 w-10/12" />
+        </div>
+      </div>
+    );
+  }
+  if (mode === 'none' && !text) {
+    if (!lastIsIn) {
+      const why = next.case.code === 'WAIT' ? 'Waiting for the client. A reminder appears after 24 hours.' : next.error ?? next.case.reason;
+      return why ? <p className="pt-4 text-center text-xs text-ink-3">{why}</p> : null;
+    }
+    return (
+      <div className="flex justify-center pt-4">
+        <button className="btn-accent" onClick={() => generate()}>Draft a reply</button>
+      </div>
+    );
+  }
+
+  const flags = draft?.flags ? draft.flags.split('|').filter(Boolean) : [];
+  const notes = flags.filter((f) => f.startsWith('note:')).map((f) => f.slice(5));
+  const guard = flags.filter((f) => f.startsWith('guardrail:')).map((f) => flagLabel(f.slice(10)));
+  const suggestion = draft?.suggestion_json ? JSON.parse(draft.suggestion_json) as Record<string, unknown> : {};
+  const extracted = draft?.extracted_json ? Object.entries(JSON.parse(draft.extracted_json) as Record<string, unknown>).filter(([, v]) => v != null && v !== '') : [];
+  const dirty = !!draft && text !== draft.draft_text;
+  const posterCode = code === 'A3' || code === 'A4' || code?.startsWith('POSTER') || flags.includes('attach_poster');
+
+  const markSent = async (final: string) => {
+    await api(`/api/leads/${lead.lead_id}/mark-sent`, { body: { text: final, template_code: draft ? undefined : code, draft_id: draft?.draft_id } });
+    toast('Recorded as sent');
+    await reload();
+  };
+  const saveDraft = async () => {
+    setSaving(true);
+    try { await api(`/api/drafts/${draft!.draft_id}`, { method: 'PATCH', body: { draft_text: text } }); toast('Draft saved'); await reload(); }
+    catch (e) { toast((e as Error).message, 'err'); } finally { setSaving(false); }
+  };
+  const applySuggestion = async () => {
+    try { await api(`/api/leads/${lead.lead_id}/apply-suggestion`, { body: { draft_id: draft!.draft_id } }); toast('Suggestion applied'); await reload(); } catch (e) { toast((e as Error).message, 'err'); }
+  };
+  const discard = async () => {
+    try { await api(`/api/drafts/${draft!.draft_id}/discard`, { body: {} }); toast('Draft discarded'); await reload(); } catch (e) { toast((e as Error).message, 'err'); }
+  };
+
+  return (
+    <div className="flex justify-end pt-2">
+      <div className="animate-rise w-full max-w-[560px] rounded-[18px] rounded-br-md border border-dashed border-accent/45 bg-surface p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
+          <span className="chip bg-accent-soft text-accent">{mode === 'template' ? 'Next message' : 'Draft'} · not sent</span>
+          {draft && <span className="chip bg-black/[0.04] text-ink-2">{draft.draft_source === 'LLM' ? 'AI' : draft.draft_source === 'TEMPLATE' ? 'Template' : draft.draft_source === 'FIXED' ? 'Fixed' : 'Manual'}</span>}
+          {code && <CaseChip code={code} />}
+          {dirty && <span className="chip bg-amber-50 text-amber-800">Unsaved</span>}
+          {mode === 'template' && next.cross_event && <span className="text-xs text-ink-3">CROSS_EVENT variant</span>}
+        </div>
+        {mode === 'template' && <Warnings items={next.warnings} />}
+        {mode === 'template' && next.error && <ErrorBox error={next.error} />}
+        {draft && (draft.reason || draft.instruction || extracted.length > 0 || notes.length > 0 || guard.length > 0) && (
+          <div className="mb-2 space-y-1 px-1 text-[12.5px] text-ink-2">
+            <div><span className="font-medium text-ink">{INTENT_EN[draft.intent as AnyIntent] ?? draft.intent}</span>{draft.confidence && Number(draft.confidence) < 1 && <span className="text-ink-3"> · {Math.round(Number(draft.confidence) * 100)}% sure</span>}{draft.reason && <span className="text-ink-3"> · {draft.reason}</span>}</div>
+            {draft.instruction && <div className="text-ink-3">Instruction: “{draft.instruction}”</div>}
+            {extracted.length > 0 && <div className="text-ink-3">Detected: {extracted.map(([k, v]) => `${k}=${v}`).join(', ')}</div>}
+            {notes.map((n) => <div key={n} className="text-sky-800">{n}</div>)}
+            {guard.length > 0 && <div className="text-red-700">Guardrail: {guard.join(', ')}</div>}
+            {draft.original_text && <details><summary className="cursor-pointer text-red-700">Show original draft (rejected)</summary><p className="mt-1 whitespace-pre-wrap">{draft.original_text}</p></details>}
+            {notes.some((n) => n.includes('FAQ')) && <Link className="text-accent" to="/knowledge">Add to Knowledge</Link>}
+          </div>
+        )}
+        {draft?.draft_source === 'NONE' && !text && <p className="px-1 pb-2 text-sm text-ink-2">No reply needed. You can still write one yourself.</p>}
+        <textarea ref={ta} aria-label="Reply text" className="input min-h-28 resize-none border-transparent bg-canvas text-[14.5px] leading-[1.5] focus:bg-surface" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write a reply…" />
+        {posterCode && (
+          <div className="mt-2 rounded-xl bg-gold-soft px-3 py-2 text-xs text-gold">
+            Send the poster image first, with this text as its caption. <a className="font-medium underline" href={d.poster} download>Download poster</a>
+          </div>
+        )}
+        {Object.keys(suggestion).length > 0 && (
+          <button className="btn-ghost mt-2 w-full justify-start text-left" onClick={applySuggestion}>
+            <span className="text-ink-3">Apply to lead:</span> {Object.entries(suggestion).map(([k, v]) => k === 'state' ? STATE_EN[v as LeadState] : `${k}=${v}`).join(', ')}
+          </button>
+        )}
+        <SendActions phone={lead.phone_e164} text={text} proactive={mode === 'template'} linkFormat={d.link_format} disabled={!text.trim()} onSent={markSent} />
+        {draft && (
+          <div className="mt-1.5 flex gap-1">
+            <button className="btn-quiet h-9 min-h-9" disabled={!dirty || saving} onClick={saveDraft}>{saving ? 'Saving…' : 'Save draft'}</button>
+            <span className="flex-1" />
+            <button className="btn-quiet h-9 min-h-9 text-ink-3" onClick={discard}>Discard</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- composer ----------
+
+function Composer({ d, reload, generate, generating }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void>; generating: boolean }) {
+  const toast = useToast();
+  const lastIsIn = d.lead.room.last_dir === 'IN';
+  const [tab, setTab] = useState<'paste' | 'ai'>(lastIsIn || d.draft ? 'ai' : 'paste');
+  const [instruction, setInstruction] = useState('');
+  useEffect(() => { setTab(lastIsIn || d.draft ? 'ai' : 'paste'); }, [d.lead.lead_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const quick = async (c: string) => {
+    if (!c) return;
+    const r = await api<{ text: string | null; error: string | null }>(`/api/leads/${d.lead.lead_id}/render/${c}`);
+    if (r.error) toast(r.error, 'err'); else window.dispatchEvent(new CustomEvent('room:insert', { detail: { text: r.text, code: c } }));
+  };
+  const run = async () => { await generate(instruction.trim() || undefined); setInstruction(''); };
+
+  return (
+    <div className="glass shrink-0 border-t border-black/[0.06] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 sm:px-6">
+      <div className="mx-auto max-w-[720px]">
+        <div className="mb-2 flex items-center gap-2">
+          <div className="segmented">
+            <button className={`seg ${tab === 'paste' ? 'seg-on' : ''}`} onClick={() => setTab('paste')}>Client message</button>
+            <button className={`seg ${tab === 'ai' ? 'seg-on' : ''}`} onClick={() => setTab('ai')}>AI reply</button>
+          </div>
+          <span className="flex-1" />
+          <select className="input h-8 min-h-8 w-auto py-0 text-[13px]" value="" onChange={(e) => quick(e.target.value)} aria-label="Insert template">
+            <option value="">Templates…</option>
+            {QUICK[d.lead.event].map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        {tab === 'paste' ? <PasteBox d={d} reload={reload} generate={generate} /> : (
+          <div>
+            <div className="flex gap-2">
+              <input className="input flex-1" placeholder="Optional instruction, e.g. “shorter”" value={instruction}
+                onChange={(e) => setInstruction(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !generating) run(); }} />
+              <button className="btn-accent" disabled={generating} onClick={run}>{generating ? 'Writing…' : d.draft ? 'Regenerate' : 'Generate'}</button>
+            </div>
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+              {INSTRUCTION_HINTS.map((h) => (
+                <button key={h} onClick={() => setInstruction((x) => (x ? `${x}, ${h.toLowerCase()}` : h))}
+                  className="shrink-0 rounded-full border border-line-2 bg-surface px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-3/50 hover:text-ink active:scale-[0.97]">{h}</button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PasteBox({ d, reload, generate }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void> }) {
+  const { cfg } = useConfig();
+  const toast = useToast();
+  const [raw, setRaw] = useState('');
+  const [parsed, setParsed] = useState<PastedMessage[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const myName = cfg?.config.my_whatsapp_name || 'Jackson';
+
+  const save = async (msgs: { direction: 'IN' | 'OUT'; text: string; sent_at?: string | null; source?: string }[], gen: boolean) => {
+    setBusy(true);
+    try {
+      const r = await api<{ warning: string | null }>(`/api/leads/${d.lead.lead_id}/messages`, { body: { messages: msgs } });
+      if (r.warning) toast(r.warning, 'err'); else toast(msgs.length > 1 ? `${msgs.length} messages saved` : 'Message saved');
+      setRaw(''); setParsed(null);
+      await reload();
+      if (gen && msgs[msgs.length - 1]?.direction === 'IN') await generate();
+    } catch (e) { toast((e as Error).message, 'err'); } finally { setBusy(false); }
+  };
+  const toMsgs = (p: PastedMessage[]) => p.map((m) => ({ direction: m.direction, text: m.text, sent_at: m.sent_at, source: m.direction === 'IN' ? 'PASTED' : 'MANUAL' }));
+  const quickSave = (gen: boolean) => {
+    const p = parseWaPaste(raw, myName);
+    if (p.length > 1) setParsed(p); // several messages: let me confirm who said what
+    else save(toMsgs(p.length ? p : [{ direction: 'IN', text: raw.trim(), sent_at: null, sender: '' }]), gen);
+  };
+
+  if (parsed) {
+    return (
+      <div className="space-y-2">
+        <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl bg-canvas p-2">
+          {parsed.map((m, i) => (
+            <div key={i} className="flex items-start gap-2 text-[13.5px]">
+              <button className={`chip shrink-0 ${m.direction === 'IN' ? 'border border-line-2 bg-surface' : 'bg-accent text-white'}`}
+                onClick={() => setParsed(parsed.map((x, j) => (j === i ? { ...x, direction: x.direction === 'IN' ? 'OUT' : 'IN' } : x)))}>
+                {m.direction === 'IN' ? 'Client' : 'Me'}
+              </button>
+              <div className="flex-1 whitespace-pre-wrap">{m.text}{m.sent_at && <span className="ml-1 text-xs text-ink-3">{fmtTime(m.sent_at)}</span>}</div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-ink-3">Tap a label to switch Client/Me.</p>
+        <div className="flex gap-2">
+          <button className="btn-accent flex-1" disabled={busy || !parsed.length} onClick={() => save(toMsgs(parsed), true)}>Save & draft reply</button>
+          <button className="btn-ghost" onClick={() => setParsed(null)}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <textarea className="input min-h-[72px] resize-y" value={raw} onChange={(e) => setRaw(e.target.value)}
+        placeholder="Paste the client message from WhatsApp…" aria-label="Client message"
+        onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && raw.trim()) quickSave(true); }} />
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button className="btn-accent flex-1 sm:flex-none" disabled={!raw.trim() || busy} onClick={() => quickSave(true)}>Save & draft reply</button>
+        <button className="btn-ghost" disabled={!raw.trim() || busy} onClick={() => quickSave(false)}>Save only</button>
+        <button className="btn-quiet" disabled={!raw.trim() || busy} onClick={() => save([{ direction: 'OUT', text: raw.trim(), source: 'MANUAL' }], false)} title="A message you typed directly in WhatsApp">This is my message</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- details ----------
+
+function Row({ k, children }: { k: string; children: React.ReactNode }) {
+  return <div className="flex gap-3 py-1.5 text-[13.5px]"><span className="w-24 shrink-0 text-ink-3">{k}</span><span className="min-w-0 flex-1 break-words">{children}</span></div>;
+}
+
+function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
   const { lead } = d;
   const toast = useToast();
   const [edit, setEdit] = useState(false);
   const [callName, setCallName] = useState(lead.call_name);
   useEffect(() => setCallName(lead.call_name), [lead.call_name]);
   return (
-    <div className={`card border-t-4 ${accent}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <EventChip event={lead.event} />
-        <StateChip state={lead.state as LeadState} />
-        <CaseChip code={lead.case} />
-        {lead.needs_attention && <span className="chip bg-red-100 text-red-700">Perlu perhatian</span>}
-        {lead.needs_pa && !lead.pa_forwarded && <span className="chip bg-gold-soft text-gold">Perlu PA</span>}
+    <section className="border-b border-line p-4">
+      <div className="flex flex-col items-center pb-3 pt-2 text-center">
+        <Avatar name={lead.call_name || lead.full_name} event={lead.event} size={56} />
+        <h2 className="mt-2 text-[17px] font-semibold">{lead.full_name}</h2>
+        <div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
+          <EventChip event={lead.event} /><StateChip state={lead.state as LeadState} /><CaseChip code={lead.case} />
+          {lead.needs_pa && !lead.pa_forwarded && <span className="chip bg-gold-soft text-gold">Needs PA</span>}
+        </div>
       </div>
-      <h1 className="mt-2 text-lg font-semibold">{lead.gender || 'Bapak/Ibu'} {lead.call_name}</h1>
-      <p className="text-xs text-stone-500">{lead.full_name}{lead.agent_name && ` · agen: ${lead.agent_name}`}</p>
       {lead.call_name_needs_review && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-amber-50 p-2 text-sm">
-          <span className="text-amber-900">Nama sapaan perlu dicek:</span>
-          <input className="input max-w-40" value={callName} onChange={(e) => setCallName(e.target.value)} />
-          <button className="btn-ghost" onClick={() => patch({ call_name: callName, call_name_ok: true }, 'Nama sapaan disimpan')}>Simpan / sudah benar</button>
+        <div className="mb-2 space-y-2 rounded-xl bg-amber-50 p-3 text-sm">
+          <p className="text-amber-900">Please check the greeting name</p>
+          <div className="flex gap-2">
+            <input className="input" value={callName} onChange={(e) => setCallName(e.target.value)} aria-label="Greeting name" />
+            <button className="btn-ghost" onClick={() => patch({ call_name: callName, call_name_ok: true }, 'Greeting name saved')}>Save</button>
+          </div>
         </div>
       )}
-      {d.also_registered.length > 0 && <p className="mt-2 text-xs text-sky-800">Terdaftar juga di {d.also_registered.map((e) => (e === 'ROADSHOW' ? 'Roadshow' : 'Jesselton')).join(', ')}</p>}
-      {lead.state === 'NO_WHATSAPP' && <p className="mt-2 rounded-md bg-stone-100 p-2 text-sm">Lead tanpa WhatsApp, dikecualikan dari antrean.{lead.email && ` Email: ${lead.email}`}</p>}
-      <div className="mt-3 text-sm">
-        {!edit ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            {lead.event === 'ROADSHOW'
-              ? <span>📅 {lead.visit_date_label || 'Tanggal belum pasti'}{lead.arrival_time && ` · ${lead.arrival_time.replace(':', '.')} WIB`}</span>
-              : <span>🕒 {sessionInfo(lead.session)?.label ?? (lead.info_only ? 'Info saja' : 'Sesi belum')} · 👥 {guestsLabel(lead) ?? 'tamu belum tahu'}</span>}
-            <button className="text-navy underline" onClick={() => setEdit(true)}>Ubah</button>
-          </div>
-        ) : <AttendanceEdit lead={lead} onSave={async (b) => { await patch(b); setEdit(false); }} onCancel={() => setEdit(false)} />}
+      <div className="divide-y divide-line">
+        <Row k="Greeting">{lead.gender || 'Bapak/Ibu'} {lead.call_name}</Row>
+        <Row k="WhatsApp">{lead.phone_e164 ? `+${lead.phone_e164}` : <span className="text-ink-3">None</span>}</Row>
+        {lead.email && <Row k="Email">{lead.email}</Row>}
+        {lead.agent_name && <Row k="Agent">{lead.agent_name}</Row>}
+        {lead.source && <Row k="Source">{lead.source}</Row>}
+        <Row k={lead.event === 'ROADSHOW' ? 'Visit' : 'Session'}>
+          {edit ? <AttendanceEdit lead={lead} onSave={async (b) => { await patch(b); setEdit(false); }} onCancel={() => setEdit(false)} /> : (
+            <span className="flex items-baseline gap-2">
+              <span className="flex-1">{lead.event === 'ROADSHOW'
+                ? <>{lead.visit_date_label || 'Not decided'}{lead.arrival_time && ` · ${lead.arrival_time.replace(':', '.')} WIB`}</>
+                : <>{sessionInfo(lead.session)?.label ?? (lead.info_only ? 'Info only' : 'Not decided')} · {guestsLabel(lead) ?? 'guests ?'}</>}</span>
+              <button className="text-[13px] text-accent" onClick={() => setEdit(true)}>Edit</button>
+            </span>
+          )}
+        </Row>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button className="btn-ghost" onClick={async () => { await copyText(d.contact_name); toast('Nama kontak disalin'); }}>Salin nama kontak</button>
-        <a className="btn-ghost" href={`https://wa.me/${lead.phone_e164}`} target="_blank" rel="noopener">Buka chat kosong</a>
+      {d.also_registered.length > 0 && <p className="mt-2 text-xs text-sky-800">Also registered for {d.also_registered.map((e) => (e === 'ROADSHOW' ? 'Roadshow' : 'Jesselton')).join(', ')}</p>}
+      {lead.state === 'NO_WHATSAPP' && <p className="mt-2 rounded-xl bg-canvas p-2.5 text-xs text-ink-2">No WhatsApp: excluded from the queues.</p>}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button className="btn-ghost text-[13px]" onClick={async () => { await copyText(d.contact_name); toast('Contact name copied'); }}>Copy contact name</button>
+        <a className="btn-ghost text-[13px]" href={`https://wa.me/${lead.phone_e164}`} target="_blank" rel="noopener">Open chat</a>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -124,245 +480,56 @@ function AttendanceEdit({ lead, onSave, onCancel }: { lead: LeadView; onSave: (b
   return (
     <div className="space-y-2">
       {lead.event === 'ROADSHOW' ? (
-        <div className="grid grid-cols-2 gap-2">
-          <select className="input" value={date} onChange={(e) => setDate(e.target.value)}>
-            <option value="">Belum pasti</option>{DATES.map((x, i) => <option key={x} value={x}>{DATE_OPTIONS[i]}</option>)}
-          </select>
-          <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          <select className="input" value={session} onChange={(e) => setSession(e.target.value as typeof session)}>
-            <option value="S1">11.00–13.00</option><option value="S2">15.00–17.00</option><option value="UNDECIDED">Belum pasti</option><option value="NONE">Kosong</option>
-          </select>
-          <input className="input" placeholder="Jumlah tamu (angka / 3+)" value={guests} onChange={(e) => setGuests(e.target.value.replace(/[^0-9+]/g, ''))} />
-          <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={infoOnly} onChange={(e) => setInfoOnly(e.target.checked)} /> Kirim info saja</label>
-        </div>
-      )}
-      <div className="flex gap-2"><button className="btn-primary" onClick={save}>Simpan</button><button className="btn-ghost" onClick={onCancel}>Batal</button></div>
-    </div>
-  );
-}
-
-function History({ d, reload }: { d: RoomData; reload: () => Promise<void> }) {
-  const toast = useToast();
-  const [editing, setEditing] = useState<Message | null>(null);
-  if (!d.messages.length) {
-    return <div className="card text-sm text-stone-500">{d.lead.state === 'REPLIED' ? 'Belum ada riwayat. Tempel isi chat terakhir dari WhatsApp di bawah.' : 'Belum ada percakapan.'}</div>;
-  }
-  return (
-    <div className="card space-y-2 bg-[#efeae2]">
-      {d.messages.map((m) => (
-        <div key={m.msg_id} className={`flex ${m.direction === 'OUT' ? 'justify-end' : 'justify-start'}`}>
-          <button onClick={() => setEditing(m)} className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-left text-sm shadow-sm ${m.direction === 'OUT' ? 'bg-[#d9fdd3]' : 'bg-white'}`}>
-            {m.text}
-            <div className="mt-1 text-right text-[10px] text-stone-500">{fmtTime(m.sent_at)} · {m.direction === 'OUT' ? SOURCE_LABEL[m.source] ?? m.source : 'klien'}{m.template_code && ` · ${m.template_code}`}</div>
-          </button>
-        </div>
-      ))}
-      {editing && <EditMessage m={editing} onClose={() => setEditing(null)} onDone={async (msg) => { setEditing(null); toast(msg); await reload(); }} />}
-    </div>
-  );
-}
-
-function EditMessage({ m, onClose, onDone }: { m: Message; onClose: () => void; onDone: (msg: string) => void }) {
-  const toast = useToast();
-  const [text, setText] = useState(m.text);
-  const [dir, setDir] = useState(m.direction);
-  const save = async () => {
-    try { await api(`/api/messages/${m.msg_id}`, { method: 'PATCH', body: { text, direction: dir } }); onDone('Pesan diperbarui'); } catch (e) { toast((e as Error).message, 'err'); }
-  };
-  const del = async () => {
-    if (!window.confirm('Hapus pesan ini dari room?')) return;
-    try { await api(`/api/messages/${m.msg_id}`, { method: 'DELETE' }); onDone('Pesan dihapus'); } catch (e) { toast((e as Error).message, 'err'); }
-  };
-  return (
-    <Modal title="Edit pesan" onClose={onClose}>
-      <textarea className="input min-h-32" value={text} onChange={(e) => setText(e.target.value)} />
-      <select className="input mt-2" value={dir} onChange={(e) => setDir(e.target.value as 'IN' | 'OUT')}><option value="IN">Dari klien</option><option value="OUT">Dari saya</option></select>
-      <div className="mt-3 flex gap-2"><button className="btn-primary flex-1" onClick={save}>Simpan</button><button className="btn-danger" onClick={del}>Hapus</button></div>
-    </Modal>
-  );
-}
-
-function NextPanel({ d, reload, generate, generating }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void>; generating: boolean }) {
-  const { lead, next, draft } = d;
-  const toast = useToast();
-  const lastIsIn = lead.room.last_dir === 'IN';
-  const [text, setText] = useState('');
-  const [code, setCode] = useState<string | undefined>();
-  const [instruction, setInstruction] = useState('');
-  const [showRegen, setShowRegen] = useState(false);
-
-  // Source of the panel: pending draft (conversation) or proactive template.
-  const mode: 'draft' | 'template' | 'none' = draft ? 'draft' : next.template_code && !lastIsIn ? 'template' : 'none';
-  useEffect(() => {
-    if (draft) { setText(draft.draft_text); setCode(draft.template_code || undefined); }
-    else if (mode === 'template') { setText(next.text ?? ''); setCode(next.template_code ?? undefined); }
-    else { setText(''); setCode(undefined); }
-  }, [draft?.draft_id, next.text, mode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const flags = draft?.flags ? draft.flags.split('|').filter(Boolean) : [];
-  const notes = flags.filter((f) => f.startsWith('note:')).map((f) => f.slice(5));
-  const guard = flags.filter((f) => f.startsWith('guardrail:')).map((f) => flagLabel(f.slice(10)));
-  const suggestion = draft?.suggestion_json ? JSON.parse(draft.suggestion_json) as Record<string, unknown> : {};
-  const extracted = draft?.extracted_json ? Object.entries(JSON.parse(draft.extracted_json) as Record<string, unknown>).filter(([, v]) => v != null && v !== '') : [];
-
-  const markSent = async (final: string) => {
-    await api(`/api/leads/${lead.lead_id}/mark-sent`, { body: { text: final, template_code: draft ? undefined : code, draft_id: draft?.draft_id } });
-    toast('Tercatat di room');
-    await reload();
-  };
-  const quick = async (c: string) => {
-    if (!c) return;
-    const r = await api<{ text: string | null; error: string | null }>(`/api/leads/${lead.lead_id}/render/${c}`);
-    if (r.error) toast(r.error, 'err'); else { setText(r.text!); setCode(c); }
-  };
-  const applySuggestion = async () => {
-    try { await api(`/api/leads/${lead.lead_id}/apply-suggestion`, { body: { draft_id: draft!.draft_id } }); toast('Saran diterapkan'); await reload(); } catch (e) { toast((e as Error).message, 'err'); }
-  };
-  const discard = async () => { await api(`/api/drafts/${draft!.draft_id}/discard`, { body: {} }); await reload(); };
-  const posterCode = code === 'A3' || code === 'A4' || code?.startsWith('POSTER') || flags.includes('attach_poster');
-  const proactive = mode === 'template';
-
-  return (
-    <div className="card space-y-2">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Pesan berikutnya</h2>
-        {mode === 'template' && <span className="text-xs text-stone-500">Template {next.template_code}{next.cross_event && ' · varian CROSS_EVENT'}</span>}
-      </div>
-      <Warnings items={next.warnings} />
-      {mode === 'none' && !lastIsIn && <p className="text-sm text-stone-500">{next.case.code === 'WAIT' ? 'Menunggu balasan klien. Reminder akan muncul setelah 24 jam.' : next.error ?? next.case.reason}</p>}
-      {mode === 'template' && next.error && <ErrorBox error={next.error} />}
-      {mode === 'none' && lastIsIn && (
-        <button className="btn-primary w-full" disabled={generating} onClick={() => generate()}>{generating ? 'Membuat draft…' : 'Buat draft balasan'}</button>
-      )}
-      {draft && (
-        <div className="space-y-1 rounded-lg bg-stone-50 p-3 text-sm">
-          <div><span className="font-medium">{INTENT_LABEL[draft.intent as AnyIntent] ?? draft.intent}</span>{draft.confidence && Number(draft.confidence) < 1 && <span className="text-stone-500"> · yakin {Math.round(Number(draft.confidence) * 100)}%</span>}</div>
-          {draft.reason && <div className="text-stone-600">{draft.reason}</div>}
-          {extracted.length > 0 && <div className="text-xs text-stone-600">Terdeteksi: {extracted.map(([k, v]) => `${k}=${v}`).join(', ')}</div>}
-          {flags.includes('needs_attention') && <div className="chip bg-red-100 text-red-700">Perlu perhatian</div>}
-          {notes.map((n) => <div key={n} className="text-xs text-sky-800">{n}</div>)}
-          {guard.length > 0 && <div className="text-xs text-red-700">Guardrail: {guard.join(', ')}</div>}
-          {draft.original_text && <details className="text-xs"><summary className="cursor-pointer text-red-700">Lihat draft asli (ditolak)</summary><p className="mt-1 whitespace-pre-wrap">{draft.original_text}</p></details>}
-          {notes.some((n) => n.includes('FAQ')) && <a className="text-xs text-navy underline" href="/faq">Tambah ke FAQ</a>}
-          {Object.keys(suggestion).length > 0 && (
-            <button className="btn-gold mt-1" onClick={applySuggestion}>Terapkan: {Object.entries(suggestion).map(([k, v]) => k === 'state' ? STATE_LABEL[v as LeadState] : `${k}=${v}`).join(', ')}</button>
-          )}
-        </div>
-      )}
-      {(mode !== 'none' || text) && (
         <>
-          {draft?.draft_source === 'NONE' && !text && <p className="text-sm text-stone-600">Tidak perlu dibalas. Anda tetap bisa menulis atau menyisipkan teks.</p>}
-          <textarea className="input min-h-48 whitespace-pre-wrap" value={text} onChange={(e) => setText(e.target.value)} />
-          {posterCode && (
-            <div className="rounded-md bg-gold-soft p-2 text-xs">
-              Kirim gambar poster dulu dengan teks ini sebagai caption, supaya jadi satu pesan. <a className="underline" href={d.poster} download>Unduh poster</a>
-            </div>
-          )}
-          <SendActions phone={lead.phone_e164} text={text} proactive={proactive} linkFormat={d.link_format} disabled={!text.trim()} onSent={markSent} />
+          <select className="input" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Visit date">
+            <option value="">Not decided</option>{DATES.map((x, i) => <option key={x} value={x}>{DATE_OPTIONS[i]}</option>)}
+          </select>
+          <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Arrival time" />
+        </>
+      ) : (
+        <>
+          <select className="input" value={session} onChange={(e) => setSession(e.target.value as typeof session)} aria-label="Session">
+            <option value="S1">11.00–13.00</option><option value="S2">15.00–17.00</option><option value="UNDECIDED">Not decided</option><option value="NONE">None</option>
+          </select>
+          <input className="input" placeholder="Guests (number / 3+)" value={guests} onChange={(e) => setGuests(e.target.value.replace(/[^0-9+]/g, ''))} />
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={infoOnly} onChange={(e) => setInfoOnly(e.target.checked)} /> Send info only</label>
         </>
       )}
-      <div className="flex flex-wrap gap-2 pt-1">
-        <select className="input flex-1" value="" onChange={(e) => quick(e.target.value)}>
-          <option value="">Sisip cepat…</option>
-          {QUICK[lead.event].map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        {(draft || lastIsIn) && <button className="btn-ghost" onClick={() => setShowRegen((x) => !x)}>Buat ulang</button>}
-        {draft && <button className="btn-ghost" onClick={discard}>Abaikan draft</button>}
-      </div>
-      {showRegen && (
-        <div className="flex gap-2">
-          <input className="input flex-1" placeholder='Instruksi (mis. "lebih singkat")' value={instruction} onChange={(e) => setInstruction(e.target.value)} />
-          <button className="btn-primary" disabled={generating} onClick={async () => { await generate(instruction || undefined); setShowRegen(false); setInstruction(''); }}>{generating ? '…' : 'Buat'}</button>
-        </div>
-      )}
+      <div className="flex gap-2"><button className="btn-primary h-9 min-h-9" onClick={save}>Save</button><button className="btn-quiet h-9 min-h-9" onClick={onCancel}>Cancel</button></div>
     </div>
   );
 }
 
-function PasteBox({ d, reload, generate }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void> }) {
-  const { cfg } = useConfig();
-  const toast = useToast();
-  const [raw, setRaw] = useState('');
-  const [preview, setPreview] = useState<PastedMessage[] | null>(null);
-  const [mine, setMine] = useState('');
-  const [busy, setBusy] = useState(false);
-  const myName = cfg?.config.my_whatsapp_name || 'Jackson';
-  const parsed = useMemo(() => preview, [preview]);
-
-  const save = async (msgs: { direction: 'IN' | 'OUT'; text: string; sent_at?: string | null; source?: string }[], gen: boolean) => {
-    setBusy(true);
-    try {
-      const r = await api<{ warning: string | null }>(`/api/leads/${d.lead.lead_id}/messages`, { body: { messages: msgs } });
-      if (r.warning) toast(r.warning, 'err');
-      setRaw(''); setPreview(null); setMine('');
-      await reload();
-      if (gen && msgs[msgs.length - 1]?.direction === 'IN') await generate();
-    } catch (e) { toast((e as Error).message, 'err'); } finally { setBusy(false); }
-  };
-
-  return (
-    <div className="card space-y-2">
-      <label className="label">Tempel balasan klien</label>
-      <textarea className="input min-h-24" value={raw} onChange={(e) => { setRaw(e.target.value); setPreview(null); }} placeholder="Salin pesan klien dari WhatsApp lalu tempel di sini" />
-      {!parsed && <button className="btn-primary w-full" disabled={!raw.trim() || busy} onClick={() => setPreview(parseWaPaste(raw, myName))}>Pratinjau</button>}
-      {parsed && (
-        <div className="space-y-2">
-          {parsed.map((m, i) => (
-            <div key={i} className="flex items-start gap-2 rounded-md bg-stone-50 p-2 text-sm">
-              <button className={`chip shrink-0 ${m.direction === 'IN' ? 'bg-white' : 'bg-[#d9fdd3]'}`} onClick={() => setPreview(parsed.map((x, j) => (j === i ? { ...x, direction: x.direction === 'IN' ? 'OUT' : 'IN' } : x)))}>
-                {m.direction === 'IN' ? 'Klien' : 'Saya'}
-              </button>
-              <div className="flex-1 whitespace-pre-wrap">{m.text}{m.sent_at && <span className="ml-1 text-xs text-stone-400">({fmtTime(m.sent_at)})</span>}</div>
-            </div>
-          ))}
-          <p className="text-xs text-stone-500">Ketuk label untuk menukar Klien/Saya.</p>
-          <div className="flex gap-2">
-            <button className="btn-primary flex-1" disabled={busy || !parsed.length} onClick={() => save(parsed.map((m) => ({ direction: m.direction, text: m.text, sent_at: m.sent_at, source: m.direction === 'IN' ? 'PASTED' : 'MANUAL' })), true)}>Simpan & buat draft</button>
-            <button className="btn-ghost" onClick={() => setPreview(null)}>Batal</button>
-          </div>
-        </div>
-      )}
-      <details>
-        <summary className="cursor-pointer text-sm text-navy">Tambah pesan saya (yang saya ketik langsung di WhatsApp)</summary>
-        <textarea className="input mt-2 min-h-20" value={mine} onChange={(e) => setMine(e.target.value)} />
-        <button className="btn-ghost mt-2" disabled={!mine.trim() || busy} onClick={() => save([{ direction: 'OUT', text: mine, source: 'MANUAL' }], false)}>Simpan pesan saya</button>
-      </details>
-    </div>
-  );
-}
-
-function Actions({ d, patch }: { d: RoomData; patch: (b: Record<string, unknown>, m?: string) => Promise<void> }) {
+function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
   const { lead } = d;
   const [notes, setNotes] = useState(lead.notes);
   const [paNote, setPaNote] = useState('');
+  useEffect(() => setNotes(lead.notes), [lead.notes]);
   return (
-    <div className="card space-y-3">
-      <h2 className="font-semibold">Tindakan</h2>
-      <div className="flex flex-wrap gap-2">
-        {lead.state !== 'CONFIRMED' && <button className="btn-ghost" onClick={() => patch({ state: 'CONFIRMED' }, 'Ditandai terkonfirmasi')}>Tandai terkonfirmasi</button>}
-        {!lead.opt_out && <button className="btn-danger" onClick={() => window.confirm('Tandai opt-out? Lead tidak akan muncul di antrean lagi.') && patch({ state: 'OPTED_OUT', opt_out: true }, 'Ditandai opt-out')}>Tandai opt-out</button>}
-        {lead.needs_attention && <button className="btn-ghost" onClick={() => patch({ needs_attention: false }, 'Label perhatian dihapus')}>Sudah ditangani</button>}
+    <section className="space-y-4 p-4">
+      <div>
+        <div className="eyebrow mb-2">Status</div>
+        <select className="input" value={lead.state} onChange={(e) => patch({ state: e.target.value }, 'Status changed')} aria-label="Lead status">
+          {Object.entries(STATE_EN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {lead.state !== 'CONFIRMED' && <button className="btn-ghost h-9 min-h-9 text-[13px]" onClick={() => patch({ state: 'CONFIRMED' }, 'Marked as confirmed')}>Confirmed</button>}
+          {lead.needs_attention && <button className="btn-ghost h-9 min-h-9 text-[13px]" onClick={() => patch({ needs_attention: false }, 'Attention flag cleared')}>Handled</button>}
+          {!lead.opt_out && <button className="btn-danger h-9 min-h-9 text-[13px]" onClick={() => window.confirm('Mark as opted out? This lead will no longer appear in queues.') && patch({ state: 'OPTED_OUT', opt_out: true }, 'Marked as opted out')}>Opt out</button>}
+        </div>
       </div>
       {lead.needs_pa && !lead.pa_forwarded && (
-        <div className="flex gap-2">
-          <input className="input flex-1" placeholder="Catatan untuk PA (opsional)" value={paNote} onChange={(e) => setPaNote(e.target.value)} />
-          <button className="btn-gold" onClick={() => patch({ pa_forwarded: true, notes: paNote ? `${lead.notes}\n[PA] ${paNote}`.trim() : lead.notes }, 'Ditandai sudah diteruskan ke PA')}>Sudah diteruskan ke PA</button>
+        <div>
+          <div className="eyebrow mb-2">Property Advisor</div>
+          <input className="input" placeholder="Note for the PA (optional)" value={paNote} onChange={(e) => setPaNote(e.target.value)} />
+          <button className="btn-gold mt-2 w-full" onClick={() => patch({ pa_forwarded: true, notes: paNote ? `${lead.notes}\n[PA] ${paNote}`.trim() : lead.notes }, 'Marked as forwarded to PA')}>Forwarded to PA</button>
         </div>
       )}
       <div>
-        <label className="label">Ubah status manual</label>
-        <select className="input" value={lead.state} onChange={(e) => patch({ state: e.target.value }, 'Status diubah')}>
-          {Object.entries(STATE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+        <div className="eyebrow mb-2">Notes</div>
+        <textarea className="input min-h-24" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Private notes about this client" />
+        {notes !== lead.notes && <button className="btn-primary mt-2 h-9 min-h-9" onClick={() => patch({ notes }, 'Notes saved')}>Save notes</button>}
       </div>
-      <div>
-        <label className="label">Catatan</label>
-        <textarea className="input min-h-20" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        {notes !== lead.notes && <button className="btn-ghost mt-2" onClick={() => patch({ notes }, 'Catatan disimpan')}>Simpan catatan</button>}
-      </div>
-    </div>
+    </section>
   );
 }

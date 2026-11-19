@@ -27,7 +27,7 @@ function setup(llmOut?: Partial<LlmOutput>) {
     },
   };
   const app = createApp(() => ({ store, repo: new Repo(store), llm: () => llm }), () => NOW);
-  const env = { KV: new FakeKV() as unknown as KVNamespace, ADMIN_PASSWORD: 'rahasia', SESSION_SECRET: 's'.repeat(40) } as Env;
+  const env = { KV: new FakeKV() as unknown as KVNamespace, ADMIN_PASSWORD: 'rahasia', REQUIRE_PASSWORD: 'true', SESSION_SECRET: 's'.repeat(40) } as Env;
   let cookie = '';
   const req = async (method: string, path: string, body?: unknown, ip = '1.1.1.1') => {
     const res = await app.request(path, { method, headers: { 'content-type': 'application/json', cookie, 'cf-connecting-ip': ip }, body: body === undefined ? undefined : JSON.stringify(body) }, env);
@@ -88,11 +88,20 @@ describe('room flow', () => {
     // State is not changed by generating.
     expect((await t.req('GET', `/api/leads/${id}`)).json.lead.state).toBe('REPLIED');
 
+    // Draft edits persist without marking anything as sent.
+    const edited = gen.json.draft.draft_text + '\nSampai jumpa.';
+    await t.req('PATCH', `/api/drafts/${gen.json.draft.draft_id}`, { draft_text: edited });
+    const saved = (await t.req('GET', `/api/leads/${id}`)).json;
+    expect(saved.draft.draft_text).toBe(edited);
+    expect(saved.messages).toHaveLength(2);
+    expect(saved.lead.room.last_text).toContain('Hadir');
+    await t.req('PATCH', `/api/drafts/${gen.json.draft.draft_id}`, { draft_text: gen.json.draft.draft_text });
+
     await t.req('POST', `/api/leads/${id}/mark-sent`, { text: gen.json.draft.draft_text, draft_id: gen.json.draft.draft_id });
     room = await t.req('GET', `/api/leads/${id}`);
     expect(room.json.lead).toMatchObject({ state: 'CONFIRMED', session: 'S2', guests: 2 });
     expect(room.json.messages.map((m: any) => m.direction)).toEqual(['OUT', 'IN', 'OUT']);
-    expect(room.json.messages[2].source).toBe('TEMPLATE');
+    expect(room.json.messages[2].source).toBe('EDITED_DRAFT');
     expect(room.json.draft).toBeNull();
     // The LLM payload contained no phone number.
     expect(t.calls.join()).not.toContain('6281200001111');
@@ -177,6 +186,6 @@ describe.skipIf(!hasExcel)('import real Excel', () => {
     expect(byName['Bolon Parson']).toBe('B1');
     expect(byName['Rohman Romi']).toBe('B5');
     const dash = (await t.req('GET', '/api/dashboard')).json.dashboard;
-    expect(dash.unanswered.find((x: any) => x.reason === 'Tempel isi chat terakhir')).toBeTruthy();
+    expect(dash.unanswered.find((x: any) => x.reason === 'Paste the latest chat')).toBeTruthy();
   });
 });

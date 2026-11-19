@@ -33,7 +33,7 @@ export function TemplatesPage() {
     if (!sel) return;
     try {
       await api('/api/templates', { method: 'PUT', body: { code: sel.code, body, status, event: sel.event } });
-      toast(status === 'APPROVED' ? 'Disimpan dan disetujui' : 'Disimpan (perlu ditinjau)');
+      toast(status === 'APPROVED' ? 'Saved and approved' : 'Saved (needs review)');
       setSel(null); load();
     } catch (e) { toast((e as Error).message, 'err'); }
   };
@@ -43,30 +43,30 @@ export function TemplatesPage() {
   if (sel) {
     return (
       <div className="space-y-3">
-        <button className="text-sm text-navy underline" onClick={() => setSel(null)}>← Semua template</button>
-        <h1 className="text-lg font-semibold">{sel.code}</h1>
-        <p className="text-sm text-stone-600">{sel.description}</p>
+        <button className="text-sm text-accent" onClick={() => setSel(null)}>← All templates</button>
+        <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{sel.code}</h1>
+        <p className="text-sm text-ink-2">{sel.description}</p>
         <textarea className="input min-h-72 font-mono text-sm" value={body} onChange={(e) => setBody(e.target.value)} />
         {errors.map((e) => <p key={e} className="text-sm text-red-700">{e}</p>)}
-        <div className="card"><div className="label">Pratinjau (data contoh)</div><pre className="whitespace-pre-wrap font-sans text-sm">{preview}</pre></div>
+        <div className="card"><div className="label">Preview (sample data)</div><pre className="whitespace-pre-wrap font-sans text-sm">{preview}</pre></div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" disabled={!!errors.length} onClick={() => save('APPROVED')}>Simpan & setujui</button>
-          <button className="btn-ghost" disabled={!!errors.length} onClick={() => save('NEW_NEEDS_REVIEW')}>Simpan sebagai perlu ditinjau</button>
-          {sel.default_body && body !== sel.default_body && <button className="btn-ghost" onClick={() => setBody(sel.default_body)}>Kembalikan ke bawaan</button>}
+          <button className="btn-primary" disabled={!!errors.length} onClick={() => save('APPROVED')}>Save & approve</button>
+          <button className="btn-ghost" disabled={!!errors.length} onClick={() => save('NEW_NEEDS_REVIEW')}>Save as needs review</button>
+          {sel.default_body && body !== sel.default_body && <button className="btn-ghost" onClick={() => setBody(sel.default_body)}>Restore default</button>}
         </div>
       </div>
     );
   }
   return (
     <div className="space-y-3">
-      <h1 className="text-lg font-semibold">Template & teks tetap</h1>
-      <ul className="card divide-y divide-stone-100 p-0">
+      <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Templates & fixed texts</h1>
+      <ul className="card divide-y divide-line p-0">
         {list.map((t) => (
           <li key={t.code}>
             <button className="flex min-h-14 w-full items-center gap-2 px-4 py-2 text-left" onClick={() => { setSel(t); setBody(t.body); }}>
               <span className="w-32 shrink-0 font-mono text-sm">{t.code}</span>
-              <span className="flex-1 text-xs text-stone-600">{t.description}</span>
-              <span className={`chip ${t.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{t.status === 'APPROVED' ? 'Disetujui' : 'Perlu ditinjau'}</span>
+              <span className="flex-1 text-xs text-ink-2">{t.description}</span>
+              <span className={`chip ${t.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{t.status === 'APPROVED' ? 'Approved' : 'Needs review'}</span>
             </button>
           </li>
         ))}

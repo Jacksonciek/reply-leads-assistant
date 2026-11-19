@@ -84,7 +84,7 @@ export class Repo {
 
   async lead(id: string, now = new Date()): Promise<Lead> {
     const l = (await this.leads(now)).find((x) => x.lead_id === id);
-    if (!l) throw new NotFound('Lead tidak ditemukan');
+    if (!l) throw new NotFound('Lead not found');
     return l;
   }
 
@@ -94,7 +94,7 @@ export class Repo {
     const t = this.leadTable(lead.event);
     const { header, rows } = await t.load();
     const hit = rows.find((r) => r.obj['lead_id'] === lead.lead_id);
-    if (!hit) throw new NotFound('Baris lead tidak ditemukan di sheet (mungkin dihapus)');
+    if (!hit) throw new NotFound('Lead row not found in the sheet (maybe deleted)');
     const merged = { ...hit.obj, ...leadToRow(lead) };
     await this.store.write(EVENTS[lead.event].sheet_tab, [{ row: hit.row, col: 1, values: header.map((h) => merged[h] ?? '') }]);
     return lead;
@@ -140,7 +140,7 @@ export class Repo {
     const p: Obj = {};
     for (const [k, v] of Object.entries(patch)) if (v !== undefined) p[k] = typeof v === 'boolean' ? (v ? 'TRUE' : 'FALSE') : String(v);
     const r = await this.messages.update('msg_id', id, p);
-    if (!r) throw new NotFound('Pesan tidak ditemukan');
+    if (!r) throw new NotFound('Message not found');
     return toMessage(r);
   }
 
@@ -152,7 +152,7 @@ export class Repo {
 
   async draft(id: string): Promise<Draft> {
     const d = (await this.drafts.all()).find((x) => x.draft_id === id);
-    if (!d) throw new NotFound('Draft tidak ditemukan');
+    if (!d) throw new NotFound('Draft not found');
     return d as unknown as Draft;
   }
 
@@ -163,6 +163,13 @@ export class Repo {
     const full: Draft = { ...d, draft_id: ulid(), created_at: now.toISOString(), state: 'PENDING' };
     await this.drafts.append([full as unknown as Obj]);
     return full;
+  }
+
+  async setDraftText(id: string, draft_text: string): Promise<void> {
+    const d = await this.draft(id);
+    // Keep a marker so "sent" can still tell the reply was edited by hand.
+    const flags = d.flags.split('|').includes('edited') ? d.flags : [d.flags, 'edited'].filter(Boolean).join('|');
+    await this.drafts.update('draft_id', id, { draft_text, flags });
   }
 
   async setDraftState(id: string, state: Draft['state']): Promise<void> {

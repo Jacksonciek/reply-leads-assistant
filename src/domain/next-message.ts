@@ -37,7 +37,7 @@ export function renderCrossEvent(code: string, base: string, templates: Template
     return [intro, ...paras.slice(2)].join('\n\n');
   }
   const sentence = renderTemplate('CROSS_EVENT-B', templates, vars);
-  if (!base.includes(B_INTRO)) throw new RenderError('Kalimat perkenalan tidak ditemukan untuk varian CROSS_EVENT');
+  if (!base.includes(B_INTRO)) throw new RenderError('Intro sentence not found for the CROSS_EVENT variant');
   return base.replace(B_INTRO, sentence);
 }
 
@@ -46,10 +46,10 @@ export function nextMessage(
 ): NextMessage {
   const c = resolveCase(lead, now);
   const res: NextMessage = { case: c, template_code: c.template, text: null, error: null, cross_event: null, warnings: [] };
-  if (lead.call_name_needs_review) res.warnings.push('Nama sapaan perlu dicek');
-  if (lead.phone_invalid) res.warnings.push('Nomor WhatsApp tidak valid');
+  if (lead.call_name_needs_review) res.warnings.push('Greeting name needs checking');
+  if (lead.phone_invalid) res.warnings.push('Invalid WhatsApp number');
   const also = alsoRegisteredIn(lead, all);
-  if (also.length) res.warnings.push(`Terdaftar juga di ${also.map((e) => events[e].display_name).join(', ')}`);
+  if (also.length) res.warnings.push(`Also registered for ${also.map((e) => events[e].display_name).join(', ')}`);
   if (!c.template) return res;
   try {
     const vars = buildVars(lead, events, now);
@@ -60,7 +60,7 @@ export function nextMessage(
         text = renderCrossEvent(c.template, text, templates, vars);
         res.cross_event = other.event;
       } catch (e) {
-        res.warnings.push(`Varian CROSS_EVENT tidak dipakai: ${(e as Error).message}`);
+        res.warnings.push(`CROSS_EVENT variant not used: ${(e as Error).message}`);
       }
     }
     res.text = text;

@@ -19,6 +19,8 @@
   "vars": {
     "SHEET_ID": "",
     "STORE": "sheets",
+    // "true" = wajib login dengan ADMIN_PASSWORD. "false" = tanpa password (sementara).
+    "REQUIRE_PASSWORD": "false",
     "GEMINI_MODEL": "gemini-flash-lite-latest",
     "GEMINI_FALLBACK_MODEL": "gemini-flash-latest"
   }

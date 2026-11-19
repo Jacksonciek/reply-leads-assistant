@@ -22,7 +22,7 @@ npm run setup:sheet
 ```powershell
 npm run dev
 ```
-Buka http://localhost:5173 dan login dengan `ADMIN_PASSWORD`.
+Buka http://localhost:5173 — untuk sementara aplikasi langsung terbuka tanpa password (`REQUIRE_PASSWORD=false`). Untuk mengaktifkan login lagi, ubah `REQUIRE_PASSWORD` menjadi `"true"` di `wrangler.jsonc` lalu login dengan `ADMIN_PASSWORD`.
 **Impor Excel:** menu Lainnya → Impor Excel → pilih `data/Roadshow__Jesselton.xlsx` → periksa pratinjau → Simpan ke Google Sheets.
 
 ## 3. Google Sheets

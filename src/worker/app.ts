@@ -16,7 +16,7 @@ import { dateLabel, wib } from '../domain/time';
 import { emptyLead, type Lead, type LeadState, type Message } from '../domain/types';
 import type { Suggestion } from '../domain/routing';
 import {
-  clearSessionCookie, makeSession, passwordMatches, rateLimitLogin, requireAuth, setSessionCookie, verifySession,
+  authRequired, clearSessionCookie, makeSession, passwordMatches, rateLimitLogin, requireAuth, setSessionCookie, verifySession,
 } from './auth';
 import type { Env } from './env';
 import { GenerateError, generateReply } from './services/generate';
@@ -57,7 +57,7 @@ const LeadPatchZ = z.object({
 
 const NewLeadZ = LeadPatchZ.extend({
   event: z.enum(['ROADSHOW', 'JESSELTON']),
-  full_name: z.string().min(1, 'Nama wajib diisi').max(200),
+  full_name: z.string().min(1, 'Name is required').max(200),
   phone: z.string().min(6, 'Nomor WhatsApp wajib diisi'),
   last_contacted_at: IsoZ.optional(),
   pasted_history: z.string().max(20000).optional(),
@@ -180,7 +180,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
   // ---------- auth ----------
   app.post('/api/auth/login', async (c) => {
     const ip = c.req.header('cf-connecting-ip') ?? 'local';
-    if (c.env.KV && !(await rateLimitLogin(c.env.KV, ip))) return err(c as C, 429, 'rate_limited', 'Terlalu banyak percobaan. Coba lagi dalam 15 menit.');
+    if (c.env.KV && !(await rateLimitLogin(c.env.KV, ip))) return err(c as C, 429, 'rate_limited', 'Too many attempts. Try again in 15 minutes.');
     const { password } = z.object({ password: z.string().max(200) }).parse(await c.req.json());
     if (!c.env.SESSION_SECRET || !(await passwordMatches(c.env.SESSION_SECRET, password, c.env.ADMIN_PASSWORD))) {
       return err(c as C, 401, 'bad_password', 'Password salah');
@@ -189,7 +189,10 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     return c.json({ ok: true });
   });
   app.post('/api/auth/logout', (c) => { clearSessionCookie(c); return c.json({ ok: true }); });
-  app.get('/api/auth/me', async (c) => c.json({ authenticated: await verifySession(c.env.SESSION_SECRET, getCookie(c, 'sid')) }));
+  app.get('/api/auth/me', async (c) => {
+    if (!authRequired(c.env)) return c.json({ authenticated: true, auth_required: false });
+    return c.json({ authenticated: await verifySession(c.env.SESSION_SECRET, getCookie(c, 'sid')), auth_required: true });
+  });
 
   app.use('/api/*', requireAuth);
 
@@ -222,7 +225,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     const all = await svc.repo.leads(now);
     const ph = normalizePhone(body.phone);
     const dup = all.find((l) => l.event === body.event && l.phone_e164 === ph.phone);
-    if (dup && !body.force) return c.json({ error: { code: 'duplicate', message: `Nomor ini sudah terdaftar di ${body.event} atas nama ${dup.full_name}`, lead_id: dup.lead_id } }, 409);
+    if (dup && !body.force) return c.json({ error: { code: 'duplicate', message: `This number is already registered for ${body.event} as ${dup.full_name}`, lead_id: dup.lead_id } }, 409);
     const cn = deriveCallName(body.full_name);
     let lead = emptyLead({
       event: body.event, full_name: body.full_name.trim(), call_name: cn.callName, call_name_needs_review: cn.needsReview,
@@ -257,7 +260,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     const svc = (c as C).var.svc;
     const { now, leads, msgs } = await loadAll(c as C);
     const lead = leads.find((l) => l.lead_id === c.req.param('id'));
-    if (!lead) throw new NotFound('Lead tidak ditemukan');
+    if (!lead) throw new NotFound('Lead not found');
     const [templates, drafts, settings] = await Promise.all([svc.repo.templates(), svc.repo.draftsFor(lead.lead_id), svc.repo.settings()]);
     const events = await svc.repo.events();
     const messages = msgs.filter((m) => m.lead_id === lead.lead_id && !m.deleted).sort((a, b) => a.sent_at.localeCompare(b.sent_at));
@@ -287,7 +290,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     const now = clock();
     const leads = await svc.repo.leads(now);
     const lead = leads.find((l) => l.lead_id === c.req.param('id'));
-    if (!lead) throw new NotFound('Lead tidak ditemukan');
+    if (!lead) throw new NotFound('Lead not found');
     return c.json(nextMessage(lead, leads, await svc.repo.templates(), now, await svc.repo.events()));
   });
 
@@ -338,7 +341,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     if (body.draft_id) {
       const d = await svc.repo.draft(body.draft_id);
       code = d.template_code || code;
-      const edited = d.draft_text.trim() !== body.text.trim();
+      const edited = d.draft_text.trim() !== body.text.trim() || d.flags.split('|').includes('edited');
       source = edited ? 'EDITED_DRAFT' : d.draft_source === 'LLM' ? 'LLM_DRAFT' : 'TEMPLATE';
       // KONF was rendered from extracted data: apply that data when it is sent.
       if (code.startsWith('KONF-') && d.suggestion_json) lead = applySuggestion(lead, JSON.parse(d.suggestion_json));
@@ -377,6 +380,13 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     const lead = applySuggestion(await svc.repo.lead(c.req.param('id'), now), s);
     await svc.repo.saveLead(lead, now);
     return c.json({ lead });
+  });
+
+  app.patch('/api/drafts/:id', async (c) => {
+    const { draft_text } = z.object({ draft_text: z.string().max(5000) }).parse(await c.req.json());
+    const svc = (c as C).var.svc;
+    await svc.repo.setDraftText(c.req.param('id'), draft_text);
+    return c.json({ draft: await svc.repo.draft(c.req.param('id')) });
   });
 
   app.post('/api/drafts/:id/discard', async (c) => {
@@ -463,7 +473,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
   app.post('/api/health/sheets', async (c) => {
     try {
       const leads = await (c as C).var.svc.repo.leads(clock());
-      return c.json({ ok: true, message: `Terhubung. ${leads.length} lead terbaca.` });
+      return c.json({ ok: true, message: `Connected. ${leads.length} leads read.` });
     } catch (e) {
       return c.json({ ok: false, message: (e as Error).message.slice(0, 300) });
     }
@@ -472,17 +482,17 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
   app.post('/api/health/gemini', async (c) => {
     const svc = (c as C).var.svc;
     const llm = svc.llm((await svc.repo.settings()).gemini_model);
-    if (!llm) return c.json({ ok: false, message: 'GEMINI_API_KEY belum diisi' });
+    if (!llm) return c.json({ ok: false, message: 'GEMINI_API_KEY is not set' });
     try {
       const models = (await llm.listModels?.()) ?? [];
       const want = (await svc.repo.settings()).gemini_model || c.env.GEMINI_MODEL || '';
-      return c.json({ ok: true, message: `Terhubung. Model "${want}" ${models.includes(want) ? 'tersedia' : 'TIDAK ditemukan di daftar model'}.`, models: models.filter((m) => /gemini/.test(m)).slice(0, 40) });
+      return c.json({ ok: true, message: `Connected. Model "${want}" ${models.includes(want) ? 'tersedia' : 'TIDAK ditemukan di daftar model'}.`, models: models.filter((m) => /gemini/.test(m)).slice(0, 40) });
     } catch (e) {
       return c.json({ ok: false, message: (e as Error).message.slice(0, 300) });
     }
   });
 
-  app.all('/api/*', (c) => err(c as C, 404, 'not_found', 'Endpoint tidak ditemukan'));
+  app.all('/api/*', (c) => err(c as C, 404, 'not_found', 'Endpoint not found'));
 
   return app;
 }

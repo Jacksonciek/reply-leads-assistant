@@ -1,4 +1,6 @@
 # Salin menjadi .dev.vars (JANGAN di-commit). Untuk produksi pakai: npx wrangler secret put NAMA
+# REQUIRE_PASSWORD=true -> aktifkan lagi login dengan password
+REQUIRE_PASSWORD=false
 ADMIN_PASSWORD=ganti-password-kuat
 SESSION_SECRET=isi-string-acak-panjang-minimal-32-karakter
 # STORE=memory  -> coba lokal tanpa Google Sheets (data hilang saat restart)
