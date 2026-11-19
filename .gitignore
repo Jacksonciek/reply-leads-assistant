@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.pem
+*service-account*.json
+sa-key*.json
+data/*.xlsx
+data/~$*
+eval-report*.md
