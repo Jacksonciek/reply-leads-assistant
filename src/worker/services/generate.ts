@@ -5,6 +5,7 @@ import type { EventCode, EventConfig } from '../../../config/events';
 import { checkDraft, fallbackFor } from '../../domain/guardrails';
 import { sapaanFor } from '../../domain/names';
 import { renderForLead } from '../../domain/next-message';
+import { getSalam } from '../../domain/time';
 import { hasMedia, isOptOut, isShortAck } from '../../domain/precheck';
 import { redactText, stripNames } from '../../domain/redact';
 import { mergeExtracted, routeIntent, type AnyIntent, type Extracted, type Suggestion } from '../../domain/routing';
@@ -64,7 +65,7 @@ export function safeContext(lead: Lead, caseCode: string): SafeLeadContext {
 }
 
 /** Build the LLM payload. Contains no phone, email, full name or agent name. */
-export function buildLlmPayload(lead: Lead, messages: Message[], newMsgs: Message[], events: Record<EventCode, EventConfig>, faqs: Faq[], instruction?: string) {
+export function buildLlmPayload(lead: Lead, messages: Message[], newMsgs: Message[], events: Record<EventCode, EventConfig>, faqs: Faq[], instruction?: string, now?: Date) {
   const sensitive = [lead.full_name, lead.agent_name, lead.email, lead.phone_e164].filter(Boolean);
   const clean = (t: string) => stripNames(redactText(t), sensitive);
   const newIds = new Set(newMsgs.map((m) => m.msg_id));
@@ -72,14 +73,14 @@ export function buildLlmPayload(lead: Lead, messages: Message[], newMsgs: Messag
     .map((m) => ({ dari: m.direction === 'IN' ? 'klien' : 'jackson', teks: clean(m.text) }));
   const approved = faqs.filter((f) => f.approved && (f.event === 'ALL' || f.event === lead.event));
   const system = buildSystemPrompt(events[lead.event], approved);
-  const user = buildUserPrompt(safeContext(lead, lead.case_code), history, newMsgs.map((m) => clean(m.text)), instruction ? clean(instruction) : undefined);
+  const user = buildUserPrompt(safeContext(lead, lead.case_code), history, newMsgs.map((m) => clean(m.text)), instruction ? clean(instruction) : undefined, now ? getSalam(now) : undefined);
   return { system, user };
 }
 
 export async function generateReply(input: GenerateInput): Promise<GenerateResult> {
   const { lead, messages, templates, events, now } = input;
   const newMsgs = pendingInbound(messages);
-  if (!newMsgs.length) throw new GenerateError('no_inbound', 'No new client message yet. Paste the client reply first.');
+  if (!newMsgs.length) return followUp(input);
   const joined = newMsgs.map((m) => m.text).join('\n');
   const base: Omit<GenerateResult, 'intent' | 'draft_text' | 'draft_source' | 'template_code'> = {
     confidence: 1, reason: '', extracted: {}, original_text: '', flags: [], notes: [], suggestion: {},
@@ -123,7 +124,7 @@ export async function generateReply(input: GenerateInput): Promise<GenerateResul
   if (!input.llm) {
     return fixed('OTHER', 'HOLD', { reason: 'LLM not configured (GEMINI_API_KEY is empty)', flags: [...base.flags, 'llm_unavailable'], notes: [...base.notes, 'LLM unavailable: using the HOLD text'] });
   }
-  const payload = buildLlmPayload(lead, messages, newMsgs, events, input.faqs, input.instruction);
+  const payload = buildLlmPayload(lead, messages, newMsgs, events, input.faqs, input.instruction, now);
   let out: LlmOutput & { model: string };
   try {
     out = await input.llm.classify(payload.system, payload.user);
@@ -173,6 +174,30 @@ export async function generateReply(input: GenerateInput): Promise<GenerateResul
       res.notes.push('LLM draft rejected by guardrail and replaced with fixed text');
     }
   }
+  return res;
+}
+
+/** The last message is Jackson's: write another message from him, following his request. */
+async function followUp(input: GenerateInput): Promise<GenerateResult> {
+  const { lead, messages, events, now } = input;
+  const last = messages[messages.length - 1];
+  if (!last) throw new GenerateError('no_messages', 'No messages yet. Send the first message from the template.');
+  if (!input.instruction?.trim()) throw new GenerateError('no_instruction', 'The last message is yours. Type what you want to send next, then Generate.');
+  if (!input.llm) throw new GenerateError('llm_unavailable', 'LLM not configured (GEMINI_API_KEY is empty)');
+  const instruction = `Klien belum membalas sejak pesan terakhir Jackson. Tulis pesan lanjutan dari Jackson untuk klien ini sesuai permintaan: ${input.instruction.trim()}`;
+  const payload = buildLlmPayload(lead, messages, [], events, input.faqs, instruction, now);
+  const res: GenerateResult = {
+    intent: 'OTHER', confidence: 1, reason: 'Follow-up message (client has not replied)', extracted: {}, draft_text: '', draft_source: 'LLM',
+    template_code: '', original_text: '', flags: [], notes: [], suggestion: {}, after_msg_id: last.msg_id, llm_payload: payload,
+  };
+  let out: LlmOutput & { model: string };
+  try { out = await input.llm.classify(payload.system, payload.user); } catch (e) {
+    const quota = e instanceof LlmError && e.status === 429;
+    throw new GenerateError(quota ? 'llm_quota' : 'llm_error', quota ? 'Gemini quota exhausted (429). Try again later.' : `LLM failed: ${(e as Error).message.slice(0, 120)}`);
+  }
+  const g = checkDraft(out.draft, { intent: 'OTHER', projectLink: events.JESSELTON.project_link, allowOptOutPhrase: false, attendanceStated: false });
+  if (g.ok) res.draft_text = out.draft.trim();
+  else { res.original_text = out.draft; res.flags.push(...g.flags.map((f) => `guardrail:${f}`)); res.notes.push('LLM draft rejected by guardrail: write it yourself or regenerate with another request'); }
   return res;
 }
 

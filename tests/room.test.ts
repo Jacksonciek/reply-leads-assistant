@@ -44,7 +44,7 @@ describe('parseWaPaste', () => {
   it('plain text without prefix is one client message', () => {
     expect(parseWaPaste('Hadir pak\nsaya berdua')).toEqual([{ direction: 'IN', text: 'Hadir pak\nsaya berdua', sent_at: null, sender: '' }]);
   });
-  it('strips invisible marks', () => expect(parseWaPaste('‎[19/11/26 09.12.33] Budi: ‎image omitted')[0].text).toBe('image omitted'));
+  it('strips invisible marks', () => expect(parseWaPaste('‎[19/11/26 09.12.33] Budi: ‎image omitted')[0].text).toBe('[Foto]'));
 });
 
 describe('redact', () => {
@@ -227,8 +227,15 @@ describe('generateReply pipeline', () => {
     const r = await run(rl({ state: 'REPLIED' }), [['IN', 'acaranya jam berapa?']], llm);
     expect(r).toMatchObject({ template_code: 'HOLD', flags: ['llm_quota'] });
   });
-  it('no inbound -> error', async () => {
-    await expect(run(rl(), [['OUT', 'halo']], null)).rejects.toThrow(/No new client message/);
+  it('last message is mine: needs an instruction, then writes a follow-up', async () => {
+    await expect(run(rl(), [['OUT', 'halo']], null)).rejects.toThrow(/last message is yours/);
+    const calls: string[] = [];
+    const r = await generateReply({ lead: rl(), messages: [msg('OUT', 'halo Pak', 0)], templates: TPL, faqs: [], events: EVENTS, llm: fake({ intent: 'OTHER', draft: 'Selamat pagi, Pak 😊 Sekadar menyapa kembali.' }, calls), now: NOW, instruction: 'sapa lagi' });
+    expect(r.draft_text).toContain('Sekadar menyapa');
+    const u = JSON.parse(calls[0]);
+    expect(u.pesan_baru_klien).toEqual([]);
+    expect(u.instruksi_tambahan_jackson).toContain('sapa lagi');
+    expect(u.salam_saat_ini).toBeTruthy();
   });
   it('instruction and only new client messages are sent as pesan_baru', async () => {
     const calls: string[] = [];

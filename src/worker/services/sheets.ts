@@ -22,7 +22,10 @@ const b64url = (buf: ArrayBuffer | Uint8Array | string) => {
 
 function pemToDer(pem: string): ArrayBuffer {
   const body = pem.replace(/\\n/g, '\n').replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '').replace(/\s+/g, '');
-  const bin = atob(body);
+  let bin: string;
+  try { bin = atob(body); } catch {
+    throw new Error('GOOGLE_SA_PRIVATE_KEY is invalid. Paste the full "private_key" value from the service account JSON file (it is long, ~1,700 characters).');
+  }
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out.buffer;
@@ -91,9 +94,21 @@ export class SheetsStore implements Store {
     }
   }
 
+  /** Run a write; if the tab does not exist yet, create it once and retry. */
+  private async withTab<T>(tab: string, fn: () => Promise<T>): Promise<T> {
+    try { return await fn(); } catch (e) {
+      if (!/Unable to parse range/.test((e as Error).message)) throw e;
+      try { await this.batchUpdate([{ addSheet: { properties: { title: tab } } }]); } catch (e2) {
+        // Another request created it at the same moment: fine, just retry the write.
+        if (!/already exists/.test((e2 as Error).message)) throw e2;
+      }
+      return fn();
+    }
+  }
+
   async write(tab: string, updates: CellUpdate[]): Promise<void> {
     if (!updates.length) return;
-    await this.call('/values:batchUpdate', {
+    await this.withTab(tab, () => this.call('/values:batchUpdate', {
       method: 'POST',
       body: JSON.stringify({
         valueInputOption: 'RAW',
@@ -102,15 +117,15 @@ export class SheetsStore implements Store {
           values: [u.values],
         })),
       }),
-    });
+    }));
   }
 
   async append(tab: string, rows: string[][]): Promise<void> {
     if (!rows.length) return;
-    await this.call(`/values/${encodeURIComponent(`'${tab}'!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+    await this.withTab(tab, () => this.call(`/values/${encodeURIComponent(`'${tab}'!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
       method: 'POST',
       body: JSON.stringify({ values: rows }),
-    });
+    }));
   }
 
   /** Raw spreadsheet metadata / batchUpdate access for the setup script. */

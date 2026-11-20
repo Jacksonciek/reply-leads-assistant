@@ -55,6 +55,13 @@ export class Repo {
     for (const ev of EVENT_CODES) {
       const t = this.leadTable(ev);
       const { header, rows } = await t.load();
+      // A tab made by hand (e.g. from an Excel upload) lacks the system columns. Add them at the end,
+      // otherwise generated lead_ids can't be saved and change on every read ("Lead not found").
+      const missingCols = leadColumns(ev).filter((c) => !header.includes(c));
+      if (missingCols.length && rows.length) {
+        await this.store.write(EVENTS[ev].sheet_tab, [{ row: 1, col: header.length + 1, values: missingCols }]);
+        header.push(...missingCols);
+      }
       const fixes = new Map<number, Obj>();
       for (const { row, obj } of rows) {
         if (!isLeadRow(obj)) continue;

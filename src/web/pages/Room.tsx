@@ -117,7 +117,7 @@ function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: ()
 
   let lastDay = '';
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-[#efeae2] px-3 py-4 sm:px-6">
       <div className="mx-auto max-w-[720px] space-y-1.5">
         {!d.messages.length && (
           <div className="py-10 text-center">
@@ -133,14 +133,14 @@ function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: ()
           const out = m.direction === 'OUT';
           return (
             <div key={m.msg_id}>
-              {showDay && <div className="py-3 text-center"><span className="eyebrow rounded-full bg-black/[0.04] px-2.5 py-1 normal-case tracking-normal">{day}</span></div>}
+              {showDay && <div className="py-3 text-center"><span className="eyebrow rounded-lg bg-white px-2.5 py-1 normal-case tracking-normal shadow-sm">{day}</span></div>}
               <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
                 <button onClick={() => setEditing(m)} title="Edit or delete message"
-                  className={`group max-w-[82%] whitespace-pre-wrap break-words rounded-[18px] px-3.5 py-2 text-left text-[14.5px] leading-[1.45] transition-transform duration-100 active:scale-[0.99] ${out ? 'rounded-br-md bg-accent text-white' : 'rounded-bl-md border border-line bg-surface'}`}>
+                  className={`group max-w-[82%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-left text-[14.5px] leading-[1.45] transition-transform duration-100 active:scale-[0.99] ${out ? 'rounded-tr-sm bg-[#d9fdd3]' : 'rounded-tl-sm bg-white'} shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]`}>
                   {m.text}
-                  <span className={`mt-1 flex items-center justify-end gap-1.5 text-[10.5px] ${out ? 'text-white/75' : 'text-ink-3'}`}>
-                    {out ? <>Sent · {SOURCE_LABEL[m.source] ?? m.source}{m.template_code && ` · ${m.template_code}`}</> : 'Incoming'}
-                    <span className="tabular-nums">{fmtTime(m.sent_at).split(' ').pop()}</span>
+                  <span className={`mt-1 flex items-center justify-end gap-1.5 text-[10.5px] text-ink-3`}>
+                    {out ? <>{SOURCE_LABEL[m.source] ?? m.source}{m.template_code && ` · ${m.template_code}`}</> : null}
+                    <span className="tabular-nums">{fmtTime(m.sent_at).split(' ').pop()}</span>{out && <span className="text-sky-500">✓✓</span>}
                   </span>
                 </button>
               </div>
@@ -206,7 +206,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   if (generating) {
     return (
       <div className="flex justify-end pt-2" aria-live="polite">
-        <div className="w-[min(82%,520px)] space-y-2 rounded-[18px] rounded-br-md border border-dashed border-accent/40 bg-surface p-4">
+        <div className="w-[min(82%,520px)] space-y-2 rounded-lg rounded-tr-sm border border-dashed border-emerald-500/60 bg-[#f3fdf1] p-4">
           <span className="eyebrow text-accent">Writing draft…</span>
           <div className="skeleton h-3 w-11/12" /><div className="skeleton h-3 w-9/12" /><div className="skeleton h-3 w-10/12" />
         </div>
@@ -231,7 +231,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   const suggestion = draft?.suggestion_json ? JSON.parse(draft.suggestion_json) as Record<string, unknown> : {};
   const extracted = draft?.extracted_json ? Object.entries(JSON.parse(draft.extracted_json) as Record<string, unknown>).filter(([, v]) => v != null && v !== '') : [];
   const dirty = !!draft && text !== draft.draft_text;
-  const posterCode = code === 'A3' || code === 'A4' || code?.startsWith('POSTER') || flags.includes('attach_poster');
+  const posterCode = code === 'A3' || code === 'A4' || code?.startsWith('POSTER') || flags.includes('attach_poster') || (mode === 'template' && lead.state === 'NEW');
 
   const markSent = async (final: string) => {
     await api(`/api/leads/${lead.lead_id}/mark-sent`, { body: { text: final, template_code: draft ? undefined : code, draft_id: draft?.draft_id } });
@@ -252,7 +252,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
 
   return (
     <div className="flex justify-end pt-2">
-      <div className="animate-rise w-full max-w-[560px] rounded-[18px] rounded-br-md border border-dashed border-accent/45 bg-surface p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      <div className="animate-rise w-full max-w-[560px] rounded-lg rounded-tr-sm border border-dashed border-emerald-500/60 bg-[#f3fdf1] p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
         <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
           <span className="chip bg-accent-soft text-accent">{mode === 'template' ? 'Next message' : 'Draft'} · not sent</span>
           {draft && <span className="chip bg-black/[0.04] text-ink-2">{draft.draft_source === 'LLM' ? 'AI' : draft.draft_source === 'TEMPLATE' ? 'Template' : draft.draft_source === 'FIXED' ? 'Fixed' : 'Manual'}</span>}
@@ -300,12 +300,16 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
 
 // ---------- composer ----------
 
+type ComposerMode = 'choose' | 'lead' | 'me';
+
 function Composer({ d, reload, generate, generating }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void>; generating: boolean }) {
   const toast = useToast();
   const lastIsIn = d.lead.room.last_dir === 'IN';
-  const [tab, setTab] = useState<'paste' | 'ai'>(lastIsIn || d.draft ? 'ai' : 'paste');
+  // Logic: paste the lead's reply first, then ask the AI what to answer.
+  const initial: ComposerMode = lastIsIn || d.draft ? 'me' : 'choose';
+  const [mode, setMode] = useState<ComposerMode>(initial);
   const [instruction, setInstruction] = useState('');
-  useEffect(() => { setTab(lastIsIn || d.draft ? 'ai' : 'paste'); }, [d.lead.lead_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setMode(initial); }, [d.lead.lead_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const quick = async (c: string) => {
     if (!c) return;
@@ -315,40 +319,49 @@ function Composer({ d, reload, generate, generating }: { d: RoomData; reload: ()
   const run = async () => { await generate(instruction.trim() || undefined); setInstruction(''); };
 
   return (
-    <div className="glass shrink-0 border-t border-black/[0.06] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 sm:px-6">
+    <div className="shrink-0 border-t border-black/[0.06] bg-[#f0f2f5] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 sm:px-6">
       <div className="mx-auto max-w-[720px]">
-        <div className="mb-2 flex items-center gap-2">
-          <div className="segmented">
-            <button className={`seg ${tab === 'paste' ? 'seg-on' : ''}`} onClick={() => setTab('paste')}>Client message</button>
-            <button className={`seg ${tab === 'ai' ? 'seg-on' : ''}`} onClick={() => setTab('ai')}>AI reply</button>
+        {mode === 'choose' ? (
+          <div className="grid grid-cols-2 gap-2">
+            <button className="btn h-12 rounded-full bg-white text-ink shadow-sm hover:bg-white/80" onClick={() => setMode('lead')}>Lead's reply</button>
+            <button className="btn h-12 rounded-full bg-[#00a884] text-white hover:brightness-110" onClick={() => setMode('me')}>My reply</button>
           </div>
-          <span className="flex-1" />
-          <select className="input h-8 min-h-8 w-auto py-0 text-[13px]" value="" onChange={(e) => quick(e.target.value)} aria-label="Insert template">
-            <option value="">Templates…</option>
-            {QUICK[d.lead.event].map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        {tab === 'paste' ? <PasteBox d={d} reload={reload} generate={generate} /> : (
-          <div>
-            <div className="flex gap-2">
-              <input className="input flex-1" placeholder="Optional instruction, e.g. “shorter”" value={instruction}
-                onChange={(e) => setInstruction(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !generating) run(); }} />
-              <button className="btn-accent" disabled={generating} onClick={run}>{generating ? 'Writing…' : d.draft ? 'Regenerate' : 'Generate'}</button>
+        ) : (
+          <>
+            <div className="mb-2 flex items-center gap-2">
+              <button className="btn-quiet h-8 min-h-8 px-2" onClick={() => setMode('choose')} aria-label="Back">‹</button>
+              <span className="text-[13px] font-medium">{mode === 'lead' ? "Paste the lead's reply" : 'What should I reply?'}</span>
+              <span className="flex-1" />
+              {mode === 'me' && (
+                <select className="input h-8 min-h-8 w-auto py-0 text-[13px]" value="" onChange={(e) => quick(e.target.value)} aria-label="Insert template">
+                  <option value="">Templates…</option>
+                  {QUICK[d.lead.event].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
             </div>
-            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
-              {INSTRUCTION_HINTS.map((h) => (
-                <button key={h} onClick={() => setInstruction((x) => (x ? `${x}, ${h.toLowerCase()}` : h))}
-                  className="shrink-0 rounded-full border border-line-2 bg-surface px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-3/50 hover:text-ink active:scale-[0.97]">{h}</button>
-              ))}
-            </div>
-          </div>
+            {mode === 'lead' ? <PasteBox d={d} reload={reload} onNext={() => setMode('me')} /> : (
+              <div>
+                <div className="flex gap-2">
+                  <input className="input flex-1 rounded-full" placeholder="Request, e.g. “ask which session they prefer”" value={instruction}
+                    onChange={(e) => setInstruction(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !generating) run(); }} />
+                  <button className="btn rounded-full bg-[#00a884] text-white hover:brightness-110" disabled={generating} onClick={run}>{generating ? 'Writing…' : d.draft ? 'Regenerate' : 'Generate'}</button>
+                </div>
+                <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+                  {INSTRUCTION_HINTS.map((h) => (
+                    <button key={h} onClick={() => setInstruction((x) => (x ? `${x}, ${h.toLowerCase()}` : h))}
+                      className="shrink-0 rounded-full border border-line-2 bg-surface px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-3/50 hover:text-ink active:scale-[0.97]">{h}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function PasteBox({ d, reload, generate }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void> }) {
+function PasteBox({ d, reload, onNext }: { d: RoomData; reload: () => Promise<void>; onNext: () => void }) {
   const { cfg } = useConfig();
   const toast = useToast();
   const [raw, setRaw] = useState('');
@@ -363,7 +376,7 @@ function PasteBox({ d, reload, generate }: { d: RoomData; reload: () => Promise<
       if (r.warning) toast(r.warning, 'err'); else toast(msgs.length > 1 ? `${msgs.length} messages saved` : 'Message saved');
       setRaw(''); setParsed(null);
       await reload();
-      if (gen && msgs[msgs.length - 1]?.direction === 'IN') await generate();
+      if (gen) onNext();
     } catch (e) { toast((e as Error).message, 'err'); } finally { setBusy(false); }
   };
   const toMsgs = (p: PastedMessage[]) => p.map((m) => ({ direction: m.direction, text: m.text, sent_at: m.sent_at, source: m.direction === 'IN' ? 'PASTED' : 'MANUAL' }));
@@ -389,7 +402,7 @@ function PasteBox({ d, reload, generate }: { d: RoomData; reload: () => Promise<
         </div>
         <p className="text-xs text-ink-3">Tap a label to switch Client/Me.</p>
         <div className="flex gap-2">
-          <button className="btn-accent flex-1" disabled={busy || !parsed.length} onClick={() => save(toMsgs(parsed), true)}>Save & draft reply</button>
+          <button className="btn-accent flex-1" disabled={busy || !parsed.length} onClick={() => save(toMsgs(parsed), true)}>Save & next</button>
           <button className="btn-ghost" onClick={() => setParsed(null)}>Cancel</button>
         </div>
       </div>
@@ -401,8 +414,7 @@ function PasteBox({ d, reload, generate }: { d: RoomData; reload: () => Promise<
         placeholder="Paste the client message from WhatsApp…" aria-label="Client message"
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && raw.trim()) quickSave(true); }} />
       <div className="mt-2 flex flex-wrap gap-2">
-        <button className="btn-accent flex-1 sm:flex-none" disabled={!raw.trim() || busy} onClick={() => quickSave(true)}>Save & draft reply</button>
-        <button className="btn-ghost" disabled={!raw.trim() || busy} onClick={() => quickSave(false)}>Save only</button>
+        <button className="btn-accent flex-1 sm:flex-none" disabled={!raw.trim() || busy} onClick={() => quickSave(true)}>Save & next</button>
         <button className="btn-quiet" disabled={!raw.trim() || busy} onClick={() => save([{ direction: 'OUT', text: raw.trim(), source: 'MANUAL' }], false)} title="A message you typed directly in WhatsApp">This is my message</button>
       </div>
     </div>

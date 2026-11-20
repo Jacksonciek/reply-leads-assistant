@@ -79,9 +79,11 @@ ${FEW_SHOT}
 Balas HANYA dengan JSON sesuai skema.`;
 }
 
-export function buildUserPrompt(lead: SafeLeadContext, history: HistoryItem[], newMessages: string[], instruction?: string): string {
+export function buildUserPrompt(lead: SafeLeadContext, history: HistoryItem[], newMessages: string[], instruction?: string, salam?: string): string {
   return JSON.stringify({
     lead,
+    // Waktu sekarang di Indonesia (WIB): pakai "Selamat <salam>" bila membuka pesan dengan salam.
+    ...(salam ? { salam_saat_ini: salam } : {}),
     riwayat: history.slice(-HISTORY_LIMIT),
     pesan_baru_klien: newMessages,
     ...(instruction ? { instruksi_tambahan_jackson: instruction } : {}),

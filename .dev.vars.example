@@ -3,9 +3,13 @@
 REQUIRE_PASSWORD=false
 ADMIN_PASSWORD=ganti-password-kuat
 SESSION_SECRET=isi-string-acak-panjang-minimal-32-karakter
-# STORE=memory  -> coba lokal tanpa Google Sheets (data hilang saat restart)
-STORE=sheets
-SHEET_ID=
+# STORE=supabase -> database Supabase (disarankan) | sheets -> Google Sheets | memory -> lokal, hilang saat restart
+STORE=supabase
+SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+# Settings -> API Keys -> service_role (secret). Hanya di server, JANGAN taruh di frontend.
+SUPABASE_SERVICE_ROLE_KEY=isi-service-role-key
+# Hanya untuk STORE=sheets:
+SHEET_ID=isi-id-spreadsheet
 GOOGLE_SA_EMAIL=nama@project.iam.gserviceaccount.com
 GOOGLE_SA_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 GEMINI_API_KEY=

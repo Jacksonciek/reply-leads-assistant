@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Dashboard, LeadView, QueueItem } from '../../domain/dashboard';
 import { api } from '../api';
-import { Avatar, CaseChip, ErrorBox, EventDot, EVENT_LABEL, Loading } from '../shared';
-import { relTime } from './Leads';
+import { ErrorBox, EventDot, EVENT_LABEL, Loading } from '../shared';
 
 const SECTION_COLORS = ['#e9407a', '#5b4cf5', '#f0670f', '#8b3ff2', '#c27803', '#0ea5e9'];
 
@@ -15,7 +14,6 @@ export function HomePage() {
   useEffect(load, []);
   if (err) return <ErrorBox error={err} onRetry={load} />;
   if (!data) return <Loading />;
-  const byId = new Map(data.leads.map((l) => [l.lead_id, l]));
   const d = data.dashboard;
   const sections: [string, QueueItem[], string?][] = [
     ['Waiting for your reply', d.unanswered],
@@ -25,7 +23,6 @@ export function HomePage() {
     ['Forward to Property Advisor', d.pa],
     ['Check greeting name', d.name_review],
   ];
-  const recent = [...data.leads].filter((l) => l.room.last_at).sort((a, b) => b.room.last_at!.localeCompare(a.room.last_at!)).slice(0, 6);
   const todo = sections.reduce((n, [, i]) => n + i.length, 0);
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -69,63 +66,17 @@ export function HomePage() {
         })}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
-        <div className="space-y-6">
-          {sections.map(([title, items, link], idx) => items.length > 0 && (
-            <section key={title}>
-              <div className="mb-2 flex items-baseline justify-between px-1">
-                <h2 className="flex items-center gap-2 text-[15px] font-semibold"><span className="h-2.5 w-2.5 rounded-full" style={{ background: SECTION_COLORS[idx % SECTION_COLORS.length] }} />{title} <span className="font-normal tabular-nums text-ink-3">{items.length}</span></h2>
-                {link && <Link to={link} className="text-[13px] text-accent">Open bulk</Link>}
-              </div>
-              <ul className="overflow-hidden rounded-2xl border border-line bg-surface">
-                {items.map((it) => {
-                  const l = byId.get(it.lead_id);
-                  if (!l) return null;
-                  return (
-                    <li key={it.lead_id} className="border-b border-line last:border-0">
-                      <Link to={`/room/${l.lead_id}`} className="flex min-h-14 items-center gap-3 px-3 py-2.5 transition-colors hover:bg-canvas">
-                        <Avatar name={l.call_name || l.full_name} event={l.event} size={32} />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[14.5px] font-medium">{l.full_name}</div>
-                          <div className="truncate text-xs text-ink-3">{it.reason}</div>
-                        </div>
-                        {it.attention && <span className="chip bg-red-50 text-red-700">Attention</span>}
-                        <CaseChip code={l.case} />
-                        <span aria-hidden className="text-ink-3">›</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+      <section>
+        <h2 className="mb-2 px-1 text-[15px] font-semibold">Work queue</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {sections.map(([title, items, link], idx) => (
+            <Link key={title} to={link ?? '/leads'} className="card transition-transform hover:-translate-y-0.5">
+              <div className="flex items-center gap-2 text-xs text-ink-3"><span className="h-2 w-2 rounded-full" style={{ background: SECTION_COLORS[idx % SECTION_COLORS.length] }} />{title}</div>
+              <div className="mt-1 text-[28px] font-semibold tabular-nums leading-none tracking-[-0.02em]">{items.length}</div>
+            </Link>
           ))}
-          {!todo && (
-            <div className="rounded-2xl border border-dashed border-line-2 px-6 py-12 text-center">
-              <p className="text-[15px] font-medium">Nobody needs a message right now</p>
-              <p className="mt-1 text-sm text-ink-3">Paste client replies into a conversation, or add a new lead from Bitrix24.</p>
-              <Link to="/leads/new" className="btn-primary mt-4">New lead</Link>
-            </div>
-          )}
         </div>
-        <aside>
-          <h2 className="mb-2 px-1 text-[15px] font-semibold">Recently updated</h2>
-          {recent.length ? (
-            <ul className="overflow-hidden rounded-2xl border border-line bg-surface">
-              {recent.map((l) => (
-                <li key={l.lead_id} className="border-b border-line last:border-0">
-                  <Link to={`/room/${l.lead_id}`} className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-canvas">
-                    <Avatar name={l.call_name || l.full_name} event={l.event} size={32} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2"><span className="truncate text-[14px] font-medium">{l.full_name}</span><span className="ml-auto shrink-0 text-[11px] text-ink-3">{relTime(l.room.last_at)}</span></div>
-                      <div className="truncate text-xs text-ink-3">{l.room.last_dir === 'OUT' ? 'You: ' : ''}{l.room.last_text}</div>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : <p className="px-1 text-sm text-ink-3">No conversations yet.</p>}
-        </aside>
-      </div>
+      </section>
     </div>
   );
 }

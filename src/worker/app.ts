@@ -21,6 +21,7 @@ import {
 import type { Env } from './env';
 import { GenerateError, generateReply } from './services/generate';
 import type { Services, ServicesFactory } from './services';
+import { storeKind } from './services';
 import { NotFound } from './services/repo';
 import { setupSheet } from './services/setup';
 
@@ -306,9 +307,10 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     const { messages } = z.object({ messages: z.array(MsgInZ).min(1).max(200) }).parse(await c.req.json());
     const now = clock();
     const lead = await svc.repo.lead(c.req.param('id'), now);
-    const added = await svc.repo.addMessages(messages.map((m) => ({
+    // Pasted chats without timestamps: 1 ms apart so they keep the pasted order.
+    const added = await svc.repo.addMessages(messages.map((m, i) => ({
       lead_id: lead.lead_id, direction: m.direction, source: m.source ?? (m.direction === 'IN' ? 'PASTED' : 'MANUAL'),
-      text: m.text.trim(), template_code: '', sent_at: m.sent_at ?? now.toISOString(),
+      text: m.text.trim(), template_code: '', sent_at: m.sent_at ?? new Date(now.getTime() + i).toISOString(),
     })), now);
     const outs = added.filter((m) => m.direction === 'OUT');
     for (const o of outs) onOutbound(lead, o.sent_at);
@@ -459,7 +461,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
   app.get('/api/config', async (c) => {
     const svc = (c as C).var.svc;
     const s = await svc.repo.settings();
-    return c.json({ config: s.raw, env: { GEMINI_MODEL: c.env.GEMINI_MODEL ?? '', GEMINI_FALLBACK_MODEL: c.env.GEMINI_FALLBACK_MODEL ?? '', store: c.env.STORE === 'memory' || !c.env.SHEET_ID ? 'memory' : 'sheets', gemini_configured: !!c.env.GEMINI_API_KEY } });
+    return c.json({ config: s.raw, env: { GEMINI_MODEL: c.env.GEMINI_MODEL ?? '', GEMINI_FALLBACK_MODEL: c.env.GEMINI_FALLBACK_MODEL ?? '', store: storeKind(c.env), gemini_configured: !!c.env.GEMINI_API_KEY } });
   });
   app.put('/api/config', async (c) => {
     const values = z.record(z.string().max(80), z.string().max(500)).parse(await c.req.json());
