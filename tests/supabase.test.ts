@@ -36,6 +36,13 @@ describe('SupabaseStore', () => {
     expect(await store.read('Missing')).toEqual([]);
   });
 
+  it('accepts a URL copied with /rest/v1/ at the end', async () => {
+    const urls: string[] = [];
+    const store = new SupabaseStore({ url: 'https://x.supabase.co/rest/v1/', serviceKey: 'k', fetchFn: (async (u: string) => { urls.push(u); return new Response('[]'); }) as typeof fetch });
+    await store.read('Config');
+    expect(urls[0].startsWith('https://x.supabase.co/rest/v1/sheet_rows?')).toBe(true);
+  });
+
   it('works end to end with Repo (leads keep stable ids)', async () => {
     const { store } = fakeSupabase();
     const repo = new Repo(store);

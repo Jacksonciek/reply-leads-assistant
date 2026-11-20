@@ -104,7 +104,7 @@ export function App() {
   return (
     <ConfigCtx.Provider value={{ cfg, reload }}>
       <ToastProvider>
-        <div className="flex min-h-dvh flex-col">
+        <div className={`flex flex-col ${ws ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
           <header className={`glass sticky top-0 z-30 border-b border-black/[0.06] ${inRoom ? 'hidden md:block' : ''}`}>
             <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-4 px-4">
               <Link to="/" className="flex items-center gap-2.5"><Mark /><span className="hidden text-[15px] font-semibold tracking-tight sm:inline">Replies</span></Link>

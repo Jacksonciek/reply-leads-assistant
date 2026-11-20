@@ -178,7 +178,7 @@ export function Workspace() {
   const { id } = useParams();
   const f = useLeads();
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-1 md:h-[calc(100dvh-3.5rem)] md:border-x md:border-line">
+    <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 md:border-x md:border-line">
       <aside className="hidden flex-col bg-surface md:flex md:w-[300px] md:shrink-0 md:border-r md:border-line lg:w-[340px]">
         <div className="space-y-2.5 border-b border-line p-3">
           <div className="flex items-center justify-between px-1">

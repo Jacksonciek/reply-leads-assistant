@@ -9,3 +9,6 @@ create table if not exists public.sheet_rows (
 
 -- No public access. The app uses the service_role key on the server, which bypasses RLS.
 alter table public.sheet_rows enable row level security;
+
+-- Newer Supabase projects do not grant table access automatically. Only the server key gets it.
+grant select, insert, update, delete on table public.sheet_rows to service_role;

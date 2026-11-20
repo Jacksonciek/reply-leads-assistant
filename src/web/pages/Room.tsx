@@ -68,8 +68,8 @@ export function RoomPage() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="glass sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-black/[0.06] px-3 md:static">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="glass z-20 flex h-14 shrink-0 items-center gap-3 border-b border-black/[0.06] px-3 md:static">
         <Link to="/leads" className="btn-quiet -ml-1 h-9 min-h-9 px-2 md:hidden" aria-label="Back to leads">‹ Leads</Link>
         <Avatar name={lead.call_name || lead.full_name} event={lead.event} size={34} />
         <div className="min-w-0 flex-1 leading-tight">
@@ -77,6 +77,7 @@ export function RoomPage() {
           <div className="truncate text-xs text-ink-3">{lead.event === 'ROADSHOW' ? 'Roadshow' : 'Jesselton'} · {STATE_EN[lead.state as LeadState]}{lead.phone_e164 && ` · +${lead.phone_e164}`}</div>
         </div>
         {lead.needs_attention && <span className="chip hidden bg-red-50 text-red-700 sm:inline-flex">Needs attention</span>}
+        <button className="btn-quiet h-9 min-h-9 px-2.5" title={d.contact_name} onClick={async () => { await copyText(d.contact_name); toast(`Copied: ${d.contact_name}`); }}>Copy WA name</button>
         <button className={`btn-quiet h-9 min-h-9 xl:hidden ${details ? 'bg-black/[0.06] text-ink' : ''}`} onClick={() => setDetails((x) => !x)} aria-expanded={details}>Details</button>
       </header>
       <div className="relative flex min-h-0 flex-1">

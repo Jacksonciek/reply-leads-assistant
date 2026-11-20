@@ -14,7 +14,7 @@ export class SupabaseStore implements Store {
   constructor(private o: SupabaseOpts) { this.fetchFn = o.fetchFn ?? fetch.bind(globalThis); }
 
   private async call<T>(query: string, init: RequestInit = {}): Promise<T> {
-    const res = await this.fetchFn(`${this.o.url.replace(/\/$/, '')}/rest/v1/sheet_rows${query}`, {
+    const res = await this.fetchFn(`${this.o.url.trim().replace(/\/+$/, '').replace(/\/rest\/v1$/, '')}/rest/v1/sheet_rows${query}`, {
       ...init,
       headers: {
         apikey: this.o.serviceKey, authorization: `Bearer ${this.o.serviceKey}`, 'content-type': 'application/json',
