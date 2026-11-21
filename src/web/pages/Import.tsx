@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import * as XLSX from 'xlsx';
 import { resolveCase } from '../../domain/cases';
 import { parseSheetRows, type ParsedRow } from '../../domain/parse-excel-row';
 import type { Lead } from '../../domain/types';
@@ -18,6 +17,7 @@ export function ImportPage() {
   const onFile = async (file: File) => {
     setResult('');
     try {
+      const XLSX = await import('xlsx');
       const wb = XLSX.read(await file.arrayBuffer());
       const read = (name: string) => (wb.Sheets[name] ? XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[name], { defval: '', raw: false }) : []);
       const parsed = [...parseSheetRows('Roadshow', read('Roadshow')), ...parseSheetRows('Jesselton', read('Jesselton'))];

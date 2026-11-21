@@ -18,7 +18,7 @@
     "SHEET_ID": "",
     "STORE": "supabase",
     // "true" = wajib login dengan ADMIN_PASSWORD. "false" = tanpa password (sementara).
-    "REQUIRE_PASSWORD": "false",
+    "REQUIRE_PASSWORD": "true",
     "GEMINI_MODEL": "gemini-flash-lite-latest",
     "GEMINI_FALLBACK_MODEL": "gemini-flash-latest"
   }

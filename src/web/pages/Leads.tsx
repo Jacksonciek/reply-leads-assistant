@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useNavigate, useParams } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import type { EventCode } from '../../../config/events';
 import { sessionInfo } from '../../../config/events';
 import type { LeadView } from '../../domain/dashboard';
@@ -8,7 +7,9 @@ import { guestsLabel, type LeadState } from '../../domain/types';
 import { api } from '../api';
 import { Avatar, ErrorBox, EventChip, EventDot, Loading, STATE_EN, StateChip } from '../shared';
 
-export function exportXlsx(leads: LeadView[]) {
+export async function exportXlsx(leads: LeadView[]) {
+  // Loaded on demand: xlsx is most of the bundle and only needed here and on Import.
+  const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
   for (const ev of ['ROADSHOW', 'JESSELTON'] as EventCode[]) {
     const rows = leads.filter((l) => l.event === ev).map((l) => ({
