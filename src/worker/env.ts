@@ -1,6 +1,6 @@
 export interface Env {
   ASSETS?: Fetcher;
-  KV: KVNamespace;
+  KV?: KVNamespace;
   ADMIN_PASSWORD: string;
   SESSION_SECRET: string;
   /** 'true' = wajib login dengan ADMIN_PASSWORD. Selain itu login dilewati (sementara). */
