@@ -1,7 +1,7 @@
 import { sessionInfo, type EventConfig, type EventCode } from '../../config/events';
 import { TEMPLATE_VARS, type TemplateDef } from '../../config/templates';
 import { sapaanFor } from './names';
-import { dayName, getSalam } from './time';
+import { addDays, dayName, getSalam, wib } from './time';
 import { guestsLabel, type Lead } from './types';
 
 export type Vars = Record<string, string | undefined>;
@@ -54,6 +54,22 @@ export function sumberPendaftaran(lead: Pick<Lead, 'event' | 'source'>, ev: Even
   return 'formulir pendaftaran Jesselton Courtyard melalui iklan di Facebook/Instagram';
 }
 
+/** "akan dimulai besok" / "sudah dimulai hari ini" / "sedang berlangsung" relative to the event dates (WIB). */
+export function acaraStatus(ev: Pick<EventConfig, 'start_date' | 'end_date'>, today: string): string {
+  if (today === addDays(ev.start_date, -1)) return 'akan dimulai besok';
+  if (today < ev.start_date) return 'akan segera berlangsung';
+  if (today === ev.start_date) return 'sudah dimulai hari ini';
+  if (today <= ev.end_date) return 'sedang berlangsung';
+  return 'telah berlangsung';
+}
+
+/** "hari ini" / "besok" / "nanti" for a visit date relative to today (WIB). */
+export function kunjunganKata(visitDate: string, today: string): string {
+  if (visitDate === today) return 'hari ini';
+  if (visitDate === addDays(today, 1)) return 'besok';
+  return 'nanti';
+}
+
 export function buildVars(lead: Lead, events: Record<EventCode, EventConfig>, now: Date, extra: Vars = {}): Vars {
   const ev = events[lead.event];
   const s = sapaanFor(lead.gender);
@@ -71,6 +87,9 @@ export function buildVars(lead: Lead, events: Record<EventCode, EventConfig>, no
     event_sebutan: ev.short_name,
     tanggal_label: lead.visit_date_label || undefined,
     jam_datang: lead.arrival_time ? lead.arrival_time.replace(':', '.') : undefined,
+    jam_status: lead.arrival_time ? 'ada' : 'kosong',
+    acara_status: acaraStatus(ev, wib(now).date),
+    kunjungan_kata: lead.visit_date ? kunjunganKata(lead.visit_date, wib(now).date) : undefined,
     sesi_label: ses?.label,
     sesi_nama: ses?.name,
     jumlah: lead.guests != null ? String(lead.guests) : undefined,

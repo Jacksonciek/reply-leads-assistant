@@ -8,7 +8,7 @@ import { api } from '../api';
 import { CaseChip, copyText, ErrorBox, EventChip, Loading, refreshSalam, SendActions, useToast, Warnings } from '../shared';
 
 interface Item { lead: LeadView; next: NextMessage; contact_name: string }
-const KINDS = [['first', 'First message'], ['reminder', 'Reminder'], ['h1', 'Day before']] as const;
+const KINDS = [['first', 'First message'], ['reminder', 'Reminder']] as const;
 
 export function BulkPage() {
   const [sp, setSp] = useSearchParams();
@@ -46,7 +46,7 @@ export function BulkPage() {
   return (
     <div className="space-y-3">
       <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Bulk messages</h1>
-      <div className="segmented grid w-full grid-cols-3">
+      <div className="segmented grid w-full grid-cols-2">
         {KINDS.map(([k, v]) => <button key={k} onClick={() => set('kind', k)} className={`seg ${kind === k ? 'seg-on' : ''}`}>{v}</button>)}
       </div>
       <div className="flex flex-wrap gap-2">

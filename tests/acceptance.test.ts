@@ -20,14 +20,14 @@ describe.skipIf(!hasExcel)('acceptance: Excel asli', () => {
   });
 
   const roadshow: [number, string, string, string, string, boolean?][] = [
-    [1, 'A-R1', 'Ibu Anita', 'Calvin Kok', 'Senin, 23 November 2026'],
+    [1, 'A4', 'Ibu Anita', 'Calvin Kok', 'Senin, 23 November 2026'],
     [2, 'X', 'Bapak Roy', '', 'Rabu, 25 November 2026'],
     [3, 'X', 'Ibu Sri', '', ''],
-    [4, 'A-R2', 'Ibu Agustina', '', ''],
-    [5, 'A-R2', 'Bapak Marnold', '', ''],
-    [6, 'CONV', 'Bapak Partahi', '', 'Senin, 23 November 2026'],
-    [7, 'A-R2', 'Ibu Jumita', '', ''],
-    [8, 'A-R1', 'Ibu Moan', '', 'Minggu, 29 November 2026', true],
+    [4, 'A3', 'Ibu Agustina', '', ''],
+    [5, 'A3', 'Bapak Marnold', '', ''],
+    [6, 'A4', 'Bapak Partahi', '', 'Senin, 23 November 2026'],
+    [7, 'A3', 'Ibu Jumita', '', ''],
+    [8, 'A4', 'Ibu Moan', '', 'Minggu, 29 November 2026', true],
     [9, 'A2', 'Ibu Trifena', '', ''],
     [10, 'A2', 'Bapak Ramlan', 'Daniel Tan', ''],
     [11, 'A2', 'Ibu dr. Defi', '', ''],
@@ -75,18 +75,18 @@ describe.skipIf(!hasExcel)('acceptance: Excel asli', () => {
       expect(text).toMatch(/^Selamat pagi, (Bapak|Ibu) /);
       expect(text).toContain(lead.call_name);
       expect(text).not.toMatch(/[{}[\]]|undefined|null|NaN/);
-      expect(text).toContain('🙏');
+      expect(text).toMatch(/[🙏😊]$/u);
     }
   });
 
   it('A1 Ruslan and B1 Bolon render the approved text', () => {
     const ruslan = renderTemplate('A1', TPL, buildVars(data.roadshow[14].lead, EVENTS, NOW));
     expect(ruslan).toContain('Selamat pagi, Bapak Ruslan 😊');
-    expect(ruslan).toContain('memilih hari Rabu, 25 November 2026 untuk berkunjung');
+    expect(ruslan).toContain('Pilihan kunjungan Bapak: *Rabu, 25 November 2026*');
     expect(ruslan).toContain('bertemu di pameran nanti 🙏');
-    expect(ruslan).toContain('saya Jackson dari tim Pameran Properti Malaysia. Terima kasih sudah mendaftar untuk acara kami yaitu Medan Property Roadshow di Cambridge City Square');
+    expect(ruslan).toContain('saya Jackson dari tim Pameran Properti Malaysia. Terima kasih sudah mendaftar untuk *Medan Property Roadshow*.');
     const bolon = renderTemplate('B1', TPL, buildVars(data.jesselton[3].lead, EVENTS, NOW));
-    expect(bolon).toContain('🕒 15.00–17.00 WIB\n📍 Emerald 1 (Lantai 25), Cambridge Hotel Medan\n👥 1 orang');
+    expect(bolon).toContain('🕒 Sesi: *15.00–17.00 WIB* · Private Preview & Afternoon Tea\n📍 Lokasi: Emerald 1 (Lantai 25), Cambridge Hotel Medan\n👥 Jumlah tamu: *1 orang*');
     expect(bolon).toContain('https://jesselton-medan.pages.dev/');
   });
 });

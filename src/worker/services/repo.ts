@@ -5,7 +5,7 @@ import { resolveCase } from '../../domain/cases';
 import { isLeadRow, leadColumns, leadToRow, rowToLead } from '../../domain/sheet-row';
 import type { TemplateMap } from '../../domain/templates';
 import {
-  CONFIG_COLUMNS, DRAFT_COLUMNS, FAQ_COLUMNS, MESSAGE_COLUMNS, TEMPLATE_COLUMNS,
+  CONFIG_COLUMNS, DRAFT_COLUMNS, FAQ_COLUMNS, MESSAGE_COLUMNS, STATE_LABEL, TEMPLATE_COLUMNS,
   type Draft, type Faq, type Lead, type Message,
 } from '../../domain/types';
 import { ObjTable, type Obj, type Store } from './store';
@@ -72,6 +72,12 @@ export class Repo {
         if (!obj['Nama Sapaan']?.trim() && lead.call_name) fix['Nama Sapaan'] = lead.call_name;
         if (obj['phone_e164'] !== lead.phone_e164) fix.phone_e164 = lead.phone_e164;
         if (obj['state'] !== lead.state) fix.state = lead.state;
+        // One-time move of old status labels to New/Reminder/Done; keep what the old label meant as flags.
+        if (obj['Status'] !== STATE_LABEL[lead.state]) {
+          fix.Status = STATE_LABEL[lead.state];
+          fix.opt_out = lead.opt_out ? 'TRUE' : 'FALSE';
+          fix.no_whatsapp = lead.no_whatsapp ? 'TRUE' : 'FALSE';
+        }
         if (!obj['agent_name'] && lead.agent_name) fix.agent_name = lead.agent_name;
         lead.case_code = resolveCase(lead, now).code;
         if (obj['case_code'] !== lead.case_code) fix.case_code = lead.case_code;

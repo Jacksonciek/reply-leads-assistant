@@ -107,7 +107,7 @@ export function routeIntent(c: Classification, lead: Lead): Routing {
 
   switch (c.intent) {
     case 'OPT_OUT':
-      return r({ draft: { kind: 'FIXED', code: 'OPT_OUT' }, suggestion: { state: 'OPTED_OUT', opt_out: true } });
+      return r({ draft: { kind: 'FIXED', code: 'OPT_OUT' }, suggestion: { opt_out: true } });
     case 'SOURCE_QUESTION':
       return attention({ kind: 'FIXED', code: 'SOURCE' });
     case 'ASK_IF_BOT':
@@ -126,12 +126,12 @@ export function routeIntent(c: Classification, lead: Lead): Routing {
       const merged = mergeExtracted(lead, c.extracted);
       const sug = extractedSuggestion(c.extracted);
       if (konfComplete(merged) && c.confidence >= CONFIDENCE_MIN) {
-        return r({ draft: { kind: 'TEMPLATE', code: lead.event === 'ROADSHOW' ? 'KONF-A' : 'KONF-B' }, suggestion: sug, notes: ['Setelah KONF ditandai terkirim, status menjadi Terkonfirmasi'] });
+        return r({ draft: { kind: 'TEMPLATE', code: lead.event === 'ROADSHOW' ? 'KONF-A' : 'KONF-B' }, suggestion: sug, notes: ['Setelah KONF ditandai terkirim, konfirmasi dicatat (status tetap Reminder sampai klien hadir)'] });
       }
       return r({ draft: { kind: 'LLM' }, suggestion: sug, notes: ['Details incomplete or uncertain: the draft asks for what is missing'] });
     }
     case 'DECLINE':
-      return r({ draft: { kind: 'FIXED', code: 'DECLINE' }, suggestion: { state: 'DECLINED' } });
+      return r({ draft: { kind: 'FIXED', code: 'DECLINE' }, suggestion: { opt_out: true } });
     case 'ASK_PRODUCT':
       return r({ draft: { kind: 'FIXED', code: 'HANDOFF_PA' }, suggestion: { needs_pa: true } });
     case 'REQUEST_CALL':
@@ -144,9 +144,7 @@ export function routeIntent(c: Classification, lead: Lead): Routing {
         : r({ draft: { kind: 'FIXED', code: 'HOLD' }, notes: ['Answer not in Knowledge (FAQ) yet'] });
     case 'REQUEST_INFO':
     case 'FORGOT_REGISTRATION':
-      if (lead.event === 'ROADSHOW') {
-        return r({ draft: { kind: 'TEMPLATE', code: c.intent === 'FORGOT_REGISTRATION' ? 'A3' : 'A4', attachPoster: true }, notes: ['Attach the e-invite (poster) when sending'] });
-      }
+      if (lead.event === 'ROADSHOW') return r({ draft: { kind: 'LLM' }, notes: ['Attach the e-invite (poster) when sending'] });
       return r({ draft: { kind: 'LLM' }, notes: [guestsKnown(lead) ? 'Draft follows pattern B5' : 'Draft follows pattern B4'] });
     default:
       return r({ draft: { kind: 'LLM' } });

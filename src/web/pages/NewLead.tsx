@@ -12,7 +12,7 @@ import { useToast, Warnings } from '../shared';
 
 const DATES = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'];
 const STATUSES = [
-  ['NEW', 'Not contacted'], ['AWAITING_REPLY', 'Awaiting reply'], ['REPLIED', 'Replied'], ['NO_WHATSAPP', 'No WhatsApp'],
+  ['NEW', 'New (not contacted)'], ['REMINDER', 'Already chatted (Reminder)'],
 ] as const;
 
 interface Form {
@@ -66,13 +66,13 @@ export function NewLeadPage() {
       if (f.guests === '1' || f.guests === '2') body.guests = Number(f.guests);
       body.guests_bucket = f.guests === '3+' ? '3+' : f.guests ? '' : 'unknown';
     }
-    if (f.state === 'AWAITING_REPLY' && f.last_contacted_at) body.last_contacted_at = new Date(f.last_contacted_at).toISOString();
-    if (f.state === 'REPLIED' && f.pasted_history.trim()) body.pasted_history = f.pasted_history;
+    if (f.state === 'REMINDER' && f.last_contacted_at) body.last_contacted_at = new Date(f.last_contacted_at).toISOString();
+    if (f.state === 'REMINDER' && f.pasted_history.trim()) body.pasted_history = f.pasted_history;
     try {
       const r = await api<{ lead_id: string }>('/api/leads', { body });
       toast('Lead saved');
       if (next) { setF(blank(f.event)); setTitle(''); setWarn([]); window.scrollTo(0, 0); }
-      else nav(`/room/${r.lead_id}${f.state === 'REPLIED' && f.pasted_history.trim() ? '?generate=1' : ''}`);
+      else nav(`/room/${r.lead_id}${f.state === 'REMINDER' && pastePreview.some((m) => m.direction === 'IN') ? '?generate=1' : ''}`);
     } catch (e) {
       if (e instanceof ApiError && e.code === 'duplicate') setDup({ id: e.data?.lead_id, msg: e.message });
       else toast((e as Error).message, 'err');
@@ -164,18 +164,18 @@ export function NewLeadPage() {
 
         <div className="pt-2">
           <div className="eyebrow mb-2">Current chat status</div>
-          <div className="segmented grid w-full grid-cols-2 gap-0.5 sm:grid-cols-4">
+          <div className="segmented grid w-full grid-cols-2 gap-0.5">
             {STATUSES.map(([k, v]) => (
               <button key={k} type="button" aria-pressed={f.state === k} onClick={() => set('state', k)} className={`seg py-2 ${f.state === k ? 'seg-on' : ''}`}>{v}</button>
             ))}
           </div>
         </div>
-        {f.state === 'AWAITING_REPLY' && (
+        {f.state === 'REMINDER' && (
           <div><label className="label">Last contacted (optional, defaults to 24 hours ago)</label><input className="input" type="datetime-local" value={f.last_contacted_at} onChange={(e) => set('last_contacted_at', e.target.value)} /></div>
         )}
-        {f.state === 'REPLIED' && (
+        {f.state === 'REMINDER' && (
           <div>
-            <label className="label">Paste chat history (WhatsApp copies supported)</label>
+            <label className="label">Paste chat history (optional, WhatsApp copies supported)</label>
             <textarea className="input min-h-32" value={f.pasted_history} onChange={(e) => set('pasted_history', e.target.value)} />
             {pastePreview.length > 0 && <p className="mt-1 text-xs text-ink-3">{pastePreview.length} messages found ({pastePreview.filter((m) => m.direction === 'IN').length} from client, {pastePreview.filter((m) => m.direction === 'OUT').length} from me)</p>}
           </div>

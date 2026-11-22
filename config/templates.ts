@@ -1,4 +1,5 @@
-// Approved templates (Section 9) and fixed texts (Section 10). Copied verbatim; only placeholders adapted.
+// Approved templates (Section 9) and fixed texts (Section 10). Placeholders adapted; layout uses WhatsApp
+// formatting: short info lines with an emoji label, and *bold* (single asterisks) for the important parts.
 // Default values are seeded into the `Templates` sheet; the sheet version wins at runtime.
 
 import type { EventCode } from './events';
@@ -15,76 +16,109 @@ export interface TemplateDef {
   description: string;
 }
 
+// ---------- shared info lines ----------
+
+const RS_LOKASI = `📍 Lokasi: Cambridge City Square, Medan
+🏢 Booth: Area Concourse, Ground Floor, dekat Restoran Lebanon`;
+
+const JC_TANGGAL = `📅 Tanggal: *Sabtu, 28 November 2026*`;
+const JC_LOKASI = `📍 Lokasi: Emerald 1 (Lantai 25), Cambridge Hotel Medan`;
+const JC_SESI = `🕒 Sesi: *{sesi_label} WIB* · {sesi_nama}`;
+const JC_DUA_SESI = `1️⃣ 11.00–13.00 WIB · Private Talk & Luncheon
+2️⃣ 15.00–17.00 WIB · Private Preview & Afternoon Tea`;
+const JC_LINK = `🔗 Info proyek: {link_proyek}`;
+
+// ---------- Roadshow ----------
+
 const A1 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Perkenalkan, saya Jackson dari tim {tim_nama}. Terima kasih sudah mendaftar untuk acara kami yaitu {event_nama} di Cambridge City Square, Medan, tanggal 23–29 November 2026.
+Perkenalkan, saya Jackson dari tim {tim_nama}. Terima kasih sudah mendaftar untuk *{event_nama}*.
 
-Kami mencatat {sapaan} memilih hari {tanggal_label} untuk berkunjung. Jika jadwal tersebut berubah, tidak masalah sama sekali, silakan kabari kapan pun. Bila sudah ada perkiraan jam kedatangan, boleh disampaikan agar kunjungannya bisa kami atur dengan nyaman.
+📅 Tanggal acara: 23–29 November 2026
+🗓️ Pilihan kunjungan {sapaan}: *{tanggal_label}*
+${RS_LOKASI}
 
-Jika sewaktu-waktu {sapaan} ingin mengetahui informasi lebih lanjut, tim Property Advisor kami siap membantu.
+Bila sudah ada *perkiraan jam kedatangan*, boleh dikabari agar Property Advisor kami bisa bersiap menyambut {sapaan}.
+Jadwal berubah pun tidak masalah, silakan kabari kapan pun.
 
-Terima kasih, {sapaan_pendek}, dan semoga berkesempatan bertemu di {event_sebutan} nanti 🙏`;
+Terima kasih, {sapaan_pendek}, semoga berkesempatan bertemu di {event_sebutan} nanti 🙏`;
 
 const A2 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Perkenalkan, saya Jackson dari tim {tim_nama}. Terima kasih sudah mendaftar untuk acara kami yaitu {event_nama} di Cambridge City Square, Medan, tanggal 23–29 November 2026.
+Perkenalkan, saya Jackson dari tim {tim_nama}. Terima kasih sudah mendaftar untuk *{event_nama}*.
 
-Bila {sapaan} sudah memiliki gambaran kapan kira-kira dapat berkunjung, boleh kami ketahui agar waktunya bisa kami atur dengan nyaman. Namun jika belum, tidak apa-apa. Silakan kabari saya kapan saja ketika rencananya sudah ada.
+📅 Tanggal: *23–29 November 2026*
+${RS_LOKASI}
 
-Jika {sapaan} ingin mengetahui informasi lebih lanjut, tim Property Advisor kami siap membantu kapan pun diperlukan.
+Boleh kami tahu *kira-kira hari apa {sapaan} berencana datang*? Belum pasti pun tidak apa-apa, kabari saja kapan pun.
+Bila ingin informasi lebih lanjut, tim Property Advisor kami siap membantu.
 
-Terima kasih, {sapaan_pendek}, dan semoga berkesempatan bertemu di {event_sebutan} nanti 🙏`;
+Terima kasih, {sapaan_pendek}, semoga berkesempatan bertemu di {event_sebutan} nanti 🙏`;
 
+// Reminder during the event, visit day not decided yet.
 const A3 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Tidak apa-apa, {sapaan_pendek}, dengan senang hati saya informasikan kembali ya. Sebelumnya {sapaan} mendaftar untuk {event_nama} di Cambridge City Square, Medan (Lantai G, depan Lebanon), tanggal 23–29 November 2026.
+Saya Jackson dari tim Malaysia Property Showcase. Sekadar mengingatkan, *Pameran Properti Malaysia {acara_status}*:
 
-Di acara ini, {sapaan} berkesempatan mengenal berbagai pilihan properti di Malaysia. E-invitation-nya saya lampirkan di bawah ya.
+📅 Tanggal: *23–29 November 2026*
+${RS_LOKASI}
 
-Bila ada hal yang ingin ditanyakan, silakan kabari saya. Nanti saya bantu teruskan ke tim Property Advisor kami. Semoga bisa bertemu di acara nanti 🙏`;
+Kami dengan senang hati menantikan kunjungan {sapaan}!
+Boleh saya tahu *kira-kira hari apa dan sekitar pukul berapa* {sapaan} berencana datang? Dengan begitu, kami bisa menjadwalkan Property Advisor yang tepat untuk mendampingi {sapaan}.
 
-const A4 = `Baik, {sapaan} {nama} 😊 Dengan senang hati.
+Terima kasih, sampai bertemu di pameran! 😊`;
 
-Berikut saya kirimkan e-invitation {event_nama}. Acaranya berlangsung 23–29 November 2026 di Cambridge City Square, Medan (Lantai G, depan Lebanon), dan {sapaan} bisa memilih hari yang paling nyaman di antara tanggal tersebut.
+// Reminder / reconfirmation for a chosen visit day (day before or on the day).
+const A4 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Jika ada yang ingin ditanyakan, silakan kabari saya. Nanti saya bantu teruskan ke tim Property Advisor kami.
+Saya Jackson dari tim Malaysia Property Showcase. Kami ingin mengonfirmasi kembali kunjungan {sapaan} {kunjungan_kata}:
 
-Terima kasih, {sapaan_pendek}, semoga kita bisa bertemu di sana 🙏`;
+📅 Tanggal: *{tanggal_label}*
+{{#if jam_status == "ada"}}🕒 Perkiraan jam: *{jam_datang} WIB*
+{{/if}}📍 Lokasi: Cambridge City Square, Medan
+🏢 Booth: *Area Concourse, Ground Floor, dekat Restoran Lebanon*
+
+{{#if jam_status == "kosong"}}Boleh saya tahu *kira-kira pukul berapa* {sapaan} berencana datang? Dengan begitu, kami bisa menyiapkan Property Advisor untuk menyambut dan mendampingi {sapaan} selama kunjungan.{{/if}}{{#if jam_status == "ada"}}Property Advisor kami akan bersiap menyambut dan mendampingi {sapaan} selama kunjungan. Bila ada perubahan, kabari saja ya.{{/if}}
+
+Kami nantikan kehadiran {sapaan} {kunjungan_kata}. Sampai bertemu! 😊`;
 
 const A_R1 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Mohon maaf bila pesan saya sebelumnya mengganggu waktu {sapaan}. Saya Jackson dari tim {event_nama}, sekadar mengingatkan bahwa {sapaan} terdaftar untuk berkunjung pada {tanggal_label} di Cambridge City Square, Medan.
+Mohon maaf bila pesan saya sebelumnya mengganggu waktu {sapaan}. Saya Jackson dari tim {event_nama}, sekadar mengingatkan jadwal kunjungan {sapaan}:
 
-Jika jadwal tersebut masih sesuai, cukup balas "Ya" saja. Bila ada perubahan atau berhalangan, tidak apa-apa, kabari saja agar catatan kami diperbarui.
+📅 Tanggal: *{tanggal_label}*
+${RS_LOKASI}
+
+Jika jadwal masih sesuai, cukup balas *"Ya"* saja.
+Bila ada perubahan atau berhalangan, tidak apa-apa, kabari saja agar catatan kami diperbarui.
 
 Terima kasih, {sapaan_pendek}, semoga berkesempatan bertemu di {event_sebutan} nanti 🙏`;
 
 const A_R2 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Mohon maaf bila pesan saya sebelumnya belum sempat terbaca. Saya Jackson dari tim {event_nama}, sekadar menyapa kembali terkait acara kami di Cambridge City Square, Medan, 23–29 November 2026.
+Mohon maaf bila pesan saya sebelumnya belum sempat terbaca. Saya Jackson dari tim {event_nama}, sekadar menyapa kembali terkait acara kami:
 
-Bila {sapaan} sudah punya gambaran hari kunjungan, boleh kabari saya kapan saja. Belum pasti pun tidak apa-apa.
+📅 Tanggal: *23–29 November 2026*
+${RS_LOKASI}
+
+Bila {sapaan} sudah punya gambaran *hari kunjungan*, boleh kabari saya kapan saja. Belum pasti pun tidak apa-apa.
 
 Terima kasih, {sapaan_pendek} 🙏`;
 
-const A_H1 = `Selamat {salam}, {sapaan} {nama} 😊
-
-Sekadar mengingatkan, besok {tanggal_label} {sapaan} berencana berkunjung ke {event_nama} di Cambridge City Square, Medan (Lantai G, depan Lebanon).
-
-Bila ada perubahan rencana, tidak apa-apa, kabari saja. Sampai bertemu besok 🙏`;
+// ---------- Jesselton ----------
 
 const B1 = `Selamat {salam}, {sapaan} {nama} 😊
 
 Perkenalkan, saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview bersama Berjaya Properties. Terima kasih sudah mendaftar, dengan senang hati kami konfirmasikan reservasi {sapaan}:
 
-📅 Sabtu, 28 November 2026
-🕒 {sesi_label} WIB
-📍 Emerald 1 (Lantai 25), Cambridge Hotel Medan
-👥 {jumlah_label}
+${JC_TANGGAL}
+${JC_SESI}
+${JC_LOKASI}
+👥 Jumlah tamu: *{jumlah_label}*
+${JC_LINK}
 
-Bila ada perubahan jadwal atau jumlah tamu, tidak masalah sama sekali, silakan kabari kapan pun. Bila berkenan, mohon balas "Hadir" agar kami catat ya.
-
-Informasi proyek: {link_proyek}
+Bila berkenan, mohon balas *"Hadir"* agar kami catat ya.
+Ada perubahan jadwal atau jumlah tamu? Tidak masalah, kabari saja kapan pun.
 
 Kami sangat menantikan kehadiran {sapaan}, sampai bertemu 🙏`;
 
@@ -92,110 +126,119 @@ const B2 = `Selamat {salam}, {sapaan} {nama} 😊
 
 Perkenalkan, saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview bersama Berjaya Properties. Terima kasih sudah mendaftar, kami sudah mencatat pilihan sesi {sapaan}:
 
-📅 Sabtu, 28 November 2026
-🕒 {sesi_label} WIB
-📍 Emerald 1 (Lantai 25), Cambridge Hotel Medan
+${JC_TANGGAL}
+${JC_SESI}
+${JC_LOKASI}
+{{#if guests_variant == "3plus"}}👥 Jumlah tamu: 3 orang atau lebih
+{{/if}}${JC_LINK}
 
-{{#if guests_variant == "empty"}}Boleh kami tahu kira-kira {sapaan} akan hadir bersama berapa orang? Perkiraan saja sudah cukup, supaya tempat dan jamuannya bisa kami siapkan dengan nyaman.{{/if}}{{#if guests_variant == "3plus"}}Kami mencatat {sapaan} mendaftar untuk 3 orang atau lebih. Boleh dikonfirmasi jumlah pastinya? Perkiraan saja sudah cukup, supaya tempat dan jamuannya bisa kami siapkan dengan nyaman.{{/if}}
-
-Informasi proyek: {link_proyek}
+{{#if guests_variant == "empty"}}Boleh kami tahu *kira-kira {sapaan} akan hadir bersama berapa orang*? Perkiraan saja sudah cukup, supaya tempat dan jamuannya bisa kami siapkan dengan nyaman.{{/if}}{{#if guests_variant == "3plus"}}Boleh dikonfirmasi *jumlah pastinya*? Perkiraan saja sudah cukup, supaya tempat dan jamuannya bisa kami siapkan dengan nyaman.{{/if}}
 
 Kami sangat menantikan kehadiran {sapaan} 🙏`;
 
 const B3 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Perkenalkan, saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview bersama Berjaya Properties. Terima kasih sudah mendaftar untuk acara kami pada Sabtu, 28 November 2026 di Cambridge Hotel Medan (Emerald 1, Lantai 25). Pendaftaran {sapaan} sudah kami catat untuk {jumlah_label}.
+Perkenalkan, saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview bersama Berjaya Properties. Terima kasih sudah mendaftar untuk acara kami:
 
-Sesi mana yang lebih nyaman untuk {sapaan}?
-🕚 11.00–13.00 WIB · Private Talk & Luncheon
-🕒 15.00–17.00 WIB · Private Preview & Afternoon Tea
+${JC_TANGGAL}
+${JC_LOKASI}
+👥 Jumlah tamu: *{jumlah_label}*
+${JC_LINK}
 
-Cukup balas 1 atau 2 ya. Kalau belum pasti, tidak apa-apa, kabari saja kapan pun.
+*Sesi mana yang lebih nyaman untuk {sapaan}?*
+${JC_DUA_SESI}
 
-Informasi proyek: {link_proyek}
+Cukup balas *1* atau *2* ya. Kalau belum pasti, tidak apa-apa, kabari saja kapan pun.
 
 Terima kasih, {sapaan_pendek}, kami nantikan kehadirannya 🙏`;
 
-const B4_ASK = `Bila berkenan, sesi mana yang lebih nyaman, dan kira-kira bersama berapa orang? Belum pasti pun tidak apa-apa.`;
-const B5_ASK = `Pendaftaran {sapaan} sudah kami catat untuk {jumlah_label}. Sesi mana yang lebih nyaman? Belum pasti pun tidak apa-apa.`;
+const B4_ASK = `Bila berkenan, *sesi mana yang lebih nyaman (1 atau 2)*, dan kira-kira bersama berapa orang? Belum pasti pun tidak apa-apa.`;
+const B5_ASK = `Pendaftaran {sapaan} tercatat untuk *{jumlah_label}*. *Sesi mana yang lebih nyaman (1 atau 2)?* Belum pasti pun tidak apa-apa.`;
 
 const B4 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Perkenalkan, saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview bersama Berjaya Properties. Terima kasih atas ketertarikan {sapaan} terhadap Jesselton Courtyard. Informasi awalnya bisa dilihat di sini:
-{link_proyek}
+Perkenalkan, saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview bersama Berjaya Properties. Terima kasih atas ketertarikan {sapaan} terhadap Jesselton Courtyard.
+${JC_LINK}
 
-Kami juga dengan senang hati mengundang {sapaan} ke Private Property Preview, Sabtu, 28 November 2026, di Cambridge Hotel Medan (Emerald 1, Lantai 25):
-🕚 11.00–13.00 WIB · Private Talk & Luncheon
-🕒 15.00–17.00 WIB · Private Preview & Afternoon Tea
+Kami juga dengan senang hati mengundang {sapaan} ke *Private Property Preview*:
+
+${JC_TANGGAL}
+${JC_LOKASI}
+${JC_DUA_SESI}
 
 ${B4_ASK}
-
-Jika {sapaan} ingin penjelasan lebih lanjut mengenai proyeknya, saya bisa atur agar tim Property Advisor kami menghubungi {sapaan} di waktu yang nyaman.
+Jika ingin penjelasan lebih lanjut mengenai proyeknya, saya bisa atur agar tim Property Advisor kami menghubungi {sapaan} di waktu yang nyaman.
 
 Terima kasih, {sapaan_pendek} 🙏`;
 
 const B5 = B4.replace(B4_ASK, B5_ASK);
 if (B5 === B4) throw new Error('B5 derivation failed');
 
+// Reminder for a lead whose session is known: tells each person their own session.
+const B6 = `Selamat {salam}, {sapaan} {nama} 😊
+
+Saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview. Sekadar mengingatkan *jadwal sesi {sapaan}*:
+
+${JC_TANGGAL}
+${JC_SESI}
+${JC_LOKASI}
+{{#if jumlah_label}}👥 Jumlah tamu: *{jumlah_label}*
+{{/if}}${JC_LINK}
+
+Jika jadwal masih sesuai, cukup balas *"Hadir"* ya.
+Ada perubahan sesi atau jumlah tamu? Tidak masalah, kabari saja.
+
+Kami nantikan kehadiran {sapaan} 🙏`;
+
+// Reminder for a lead whose session is not known yet.
 const B_R = `Selamat {salam}, {sapaan} {nama} 😊
 
-Mohon maaf bila pesan saya sebelumnya mengganggu waktu {sapaan}. Saya Jackson dari tim Jesselton Courtyard Private Property Preview, sekadar mengingatkan bahwa acaranya berlangsung Sabtu, 28 November 2026 di Cambridge Hotel Medan (Emerald 1, Lantai 25).
+Mohon maaf bila pesan saya sebelumnya mengganggu waktu {sapaan}. Saya Jackson dari tim Jesselton Courtyard Private Property Preview, sekadar mengingatkan acaranya:
 
-Jika berkenan, cukup balas "Hadir" beserta pilihan sesi (11.00 atau 15.00) agar kami bisa menyiapkan tempatnya. Bila berhalangan, tidak apa-apa, kabari saja.
+${JC_TANGGAL}
+${JC_LOKASI}
+${JC_DUA_SESI}
+
+Jika berkenan, cukup balas *"Hadir"* beserta *pilihan sesi (1 atau 2)* agar kami bisa menyiapkan tempatnya.
+Bila berhalangan, tidak apa-apa, kabari saja.
 
 Terima kasih, {sapaan_pendek} 🙏`;
 
 const B_H1 = `Selamat {salam}, {sapaan} {nama} 😊
 
-Sekadar mengingatkan, Private Property Preview Jesselton Courtyard berlangsung besok:
-📅 Sabtu, 28 November 2026
-🕒 {sesi_label} WIB
-📍 Emerald 1 (Lantai 25), Cambridge Hotel Medan
+Sekadar mengingatkan, *Private Property Preview Jesselton Courtyard berlangsung besok*:
 
-Bila ada perubahan rencana, tidak apa-apa, kabari saja. Kami menantikan kehadiran {sapaan} 🙏`;
+${JC_TANGGAL}
+${JC_SESI}
+${JC_LOKASI}
+{{#if jumlah_label}}👥 Jumlah tamu: *{jumlah_label}*
+{{/if}}
+Bila ada perubahan rencana, tidak apa-apa, kabari saja.
+Kami menantikan kehadiran {sapaan} 🙏`;
 
-const KONF_A = `Terima kasih, {sapaan} {nama} 😊
+// ---------- replies ----------
 
-Kunjungan {sapaan} ke {event_nama} sudah kami catat pada {tanggal_label}{{#if jam_datang}}, sekitar pukul {jam_datang} WIB{{/if}}, di Cambridge City Square, Medan (Lantai G, depan Lebanon).
+const KONF_A = `Terima kasih, {sapaan} {nama} 😊 Kunjungan {sapaan} ke *{event_nama}* sudah kami catat:
 
-Bila ada perubahan, tidak masalah sama sekali, kabari saja kapan pun. Sampai bertemu di sana 🙏`;
+📅 Tanggal: *{tanggal_label}*
+{{#if jam_datang}}🕒 Jam: *sekitar pukul {jam_datang} WIB*
+{{/if}}${RS_LOKASI}
+
+Bila ada perubahan, tidak masalah sama sekali, kabari saja kapan pun.
+Sampai bertemu di sana 🙏`;
 
 const KONF_B = `Terima kasih, {sapaan} {nama} 😊 Reservasi {sapaan} sudah kami catat:
 
-📅 Sabtu, 28 November 2026
-🕒 {sesi_label} WIB · {sesi_nama}
-📍 Emerald 1 (Lantai 25), Cambridge Hotel Medan
-👥 {jumlah_label}
+${JC_TANGGAL}
+${JC_SESI}
+${JC_LOKASI}
+👥 Jumlah tamu: *{jumlah_label}*
 
-Bila ada perubahan, tidak masalah sama sekali, kabari saja kapan pun. Kami nantikan kehadiran {sapaan} 🙏`;
-
-const SOFT_CONFIRM_A = `Sama-sama, {sapaan_pendek} {nama} 😊 Sekadar memastikan, apakah {sapaan} berkenan berkunjung ke {event_nama} pada {tanggal_label}? Cukup balas "Ya" bila sudah pasti. Bila belum pasti, tidak apa-apa, kabari saja nanti 🙏`;
-
-const SOFT_CONFIRM_B = `Sama-sama, {sapaan_pendek} {nama} 😊 Sekadar memastikan, apakah {sapaan} berkenan hadir di sesi {sesi_label} WIB, Sabtu, 28 November 2026? Cukup balas "Hadir" bila sudah pasti. Bila belum pasti, tidak apa-apa, kabari saja nanti 🙏`;
-
-// Replaces the first two paragraphs (greeting + introduction) of A1/A2.
-const CROSS_EVENT_A = `Selamat {salam}, {sapaan} {nama} 😊
-
-Terima kasih juga sudah mendaftar untuk {event_nama}, {sapaan_pendek}. Acara ini terpisah dari Private Property Preview Jesselton Courtyard yang sebelumnya saya informasikan. {event_nama} berlangsung di Cambridge City Square, Medan, tanggal 23–29 November 2026.`;
+Bila ada perubahan, tidak masalah sama sekali, kabari saja kapan pun.
+Kami nantikan kehadiran {sapaan} 🙏`;
 
 // Replaces the "Perkenalkan, ..." sentence of B1–B5. Wording derived by Claude: needs Jackson's review.
 const CROSS_EVENT_B = `Terima kasih juga sudah mendaftar untuk Jesselton Courtyard Private Property Preview bersama Berjaya Properties, {sapaan_pendek}. Acara ini terpisah dari {event_lain_nama} di Cambridge City Square yang sebelumnya saya informasikan.`;
-
-const REMINDER_PA_A = `Selamat {salam}, {sapaan} {nama} 😊
-
-Terima kasih atas obrolannya {waktu_obrolan}, {sapaan_pendek}. Sekadar mengingatkan, {sapaan} terdaftar untuk berkunjung ke {event_nama} pada {tanggal_label} di Cambridge City Square, Medan (Lantai G, depan Lebanon).
-
-Bila ada hal yang ingin {sapaan} tanyakan lebih lanjut, saya bisa aturkan agar rekan kami dari tim Property Advisor menghubungi {sapaan}. Apakah {sapaan} berkenan, dan kira-kira kapan waktu yang paling nyaman?
-
-Terima kasih, {sapaan_pendek}, sampai bertemu {hari_kunjungan} nanti 🙏`;
-
-const REMINDER_PA_B = `Selamat {salam}, {sapaan} {nama} 😊
-
-Terima kasih atas obrolannya {waktu_obrolan}, {sapaan_pendek}. Sekadar mengingatkan, {sapaan} terdaftar untuk Private Property Preview Jesselton Courtyard, Sabtu, 28 November 2026, sesi {sesi_label} WIB, di Cambridge Hotel Medan (Emerald 1, Lantai 25).
-
-Bila ada hal yang ingin {sapaan} tanyakan lebih lanjut, saya bisa aturkan agar rekan kami dari tim Property Advisor menghubungi {sapaan}. Apakah {sapaan} berkenan, dan kira-kira kapan waktu yang paling nyaman?
-
-Terima kasih, {sapaan_pendek}, sampai bertemu {hari_kunjungan} nanti 🙏`;
 
 const POSTER_A = `Izin saya kirimkan poster {event_nama} ya, {sapaan_pendek}, agar lebih mudah melihat jadwal dan lokasinya 🙏`;
 const POSTER_B = `Izin saya kirimkan undangan Private Property Preview Jesselton Courtyard ya, {sapaan_pendek}, untuk informasi sesi dan lokasinya 🙏`;
@@ -206,26 +249,21 @@ const T = (code: string, event: TemplateDef['event'], kind: TemplateKind, body: 
 export const DEFAULT_TEMPLATES: TemplateDef[] = [
   T('A1', 'ROADSHOW', 'PROACTIVE', A1, 'Pesan pertama, tanggal sudah dipilih'),
   T('A2', 'ROADSHOW', 'PROACTIVE', A2, 'Pesan pertama, tanggal belum pasti'),
-  T('A3', 'ROADSHOW', 'REPLY', A3, 'Klien lupa / minta diingatkan (lampirkan poster)'),
-  T('A4', 'ROADSHOW', 'REPLY', A4, 'Klien minta dikirimi info (lampirkan poster)'),
+  T('A3', 'ROADSHOW', 'PROACTIVE', A3, 'Reminder saat pameran, hari kunjungan belum pasti'),
+  T('A4', 'ROADSHOW', 'PROACTIVE', A4, 'Reminder konfirmasi kunjungan (H-1 atau hari-H)'),
   T('A-R1', 'ROADSHOW', 'PROACTIVE', A_R1, 'Reminder, tanggal ada'),
   T('A-R2', 'ROADSHOW', 'PROACTIVE', A_R2, 'Reminder, tanggal belum pasti'),
-  T('A-H1', 'ROADSHOW', 'PROACTIVE', A_H1, 'Pengingat H-1', 'NEW_NEEDS_REVIEW'),
   T('B1', 'JESSELTON', 'PROACTIVE', B1, 'Pesan pertama, sesi + 1–2 tamu'),
   T('B2', 'JESSELTON', 'PROACTIVE', B2, 'Pesan pertama, sesi ada, tamu kosong / 3+'),
   T('B3', 'JESSELTON', 'PROACTIVE', B3, 'Pesan pertama, tamu ada, sesi belum'),
   T('B4', 'JESSELTON', 'PROACTIVE', B4, 'Pesan pertama, hanya minta info'),
   T('B5', 'JESSELTON', 'PROACTIVE', B5, 'Pesan pertama, info saja + tamu ada'),
-  T('B-R', 'JESSELTON', 'PROACTIVE', B_R, 'Reminder'),
+  T('B6', 'JESSELTON', 'PROACTIVE', B6, 'Reminder sesi masing-masing (sesi sudah diketahui)'),
+  T('B-R', 'JESSELTON', 'PROACTIVE', B_R, 'Reminder, sesi belum diketahui'),
   T('B-H1', 'JESSELTON', 'PROACTIVE', B_H1, 'Pengingat H-1 (Jumat 27 Nov)'),
   T('KONF-A', 'ROADSHOW', 'REPLY', KONF_A, 'Konfirmasi final Roadshow'),
   T('KONF-B', 'JESSELTON', 'REPLY', KONF_B, 'Konfirmasi final Jesselton'),
-  T('SOFT_CONFIRM-A', 'ROADSHOW', 'REPLY', SOFT_CONFIRM_A, 'Balasan pendek ("ok, terima kasih") sebelum terkonfirmasi'),
-  T('SOFT_CONFIRM-B', 'JESSELTON', 'REPLY', SOFT_CONFIRM_B, 'Balasan pendek ("ok, terima kasih") sebelum terkonfirmasi'),
-  T('CROSS_EVENT-A', 'ROADSHOW', 'PROACTIVE', CROSS_EVENT_A, 'Pembuka A1/A2 bila nomor sudah dihubungi untuk Jesselton'),
   T('CROSS_EVENT-B', 'JESSELTON', 'PROACTIVE', CROSS_EVENT_B, 'Kalimat pembuka B1–B5 bila nomor sudah dihubungi untuk Roadshow', 'NEW_NEEDS_REVIEW'),
-  T('REMINDER_PA-A', 'ROADSHOW', 'REPLY', REMINDER_PA_A, 'Pengingat + tawaran Property Advisor (lead sudah membalas)'),
-  T('REMINDER_PA-B', 'JESSELTON', 'REPLY', REMINDER_PA_B, 'Pengingat + tawaran Property Advisor (lead sudah membalas)'),
   T('POSTER-A', 'ROADSHOW', 'REPLY', POSTER_A, 'Caption saat mengirim poster'),
   T('POSTER-B', 'JESSELTON', 'REPLY', POSTER_B, 'Caption saat mengirim undangan'),
   T('HANDOFF_PA', 'ALL', 'FIXED', 'Terima kasih atas pertanyaannya, {sapaan} {nama} 😊 Untuk hal ini, penjelasan terbaik datang dari tim Property Advisor kami, jadi pertanyaan {sapaan} saya teruskan kepada mereka. Kira-kira kapan waktu yang paling nyaman untuk dihubungi? Di acara nanti, {sapaan} juga bisa berdiskusi langsung dengan mereka 🙏', 'Pertanyaan produk (harga, unit, dll.)'),
@@ -244,6 +282,6 @@ export const OPT_OUT_PHRASE_ALLOWED = ['OPT_OUT', 'SOURCE'];
 
 export const TEMPLATE_VARS = [
   'salam', 'sapaan', 'sapaan_pendek', 'nama', 'tim_nama', 'event_nama', 'event_sebutan', 'event_lain_nama',
-  'tanggal_label', 'jam_datang', 'sesi_label', 'sesi_nama', 'jumlah', 'jumlah_label', 'link_proyek',
-  'guests_variant', 'sumber_pendaftaran', 'hari_kunjungan', 'waktu_obrolan',
+  'tanggal_label', 'jam_datang', 'jam_status', 'sesi_label', 'sesi_nama', 'jumlah', 'jumlah_label', 'link_proyek',
+  'guests_variant', 'sumber_pendaftaran', 'hari_kunjungan', 'waktu_obrolan', 'acara_status', 'kunjungan_kata',
 ] as const;

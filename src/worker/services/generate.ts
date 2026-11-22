@@ -96,20 +96,19 @@ export async function generateReply(input: GenerateInput): Promise<GenerateResul
 
   // 1. Opt-out regex: no LLM.
   if (isOptOut(joined)) {
-    return fixed('OPT_OUT', 'OPT_OUT', { reason: 'Opt-out keyword detected', suggestion: { state: 'OPTED_OUT', opt_out: true }, flags: ['opt_out'] });
+    return fixed('OPT_OUT', 'OPT_OUT', { reason: 'Opt-out keyword detected', suggestion: { opt_out: true }, flags: ['opt_out'] });
   }
   // 2. Short acknowledgement.
   if (isShortAck(joined)) {
-    if (lead.state === 'CONFIRMED') {
+    if (lead.confirmed_at || lead.state === 'DONE') {
       return { ...base, intent: 'SMALL_TALK', draft_text: '', draft_source: 'NONE', template_code: '', reason: 'Closing reply from an already confirmed client', notes: ['No reply needed'] };
     }
-    const code = lead.event === 'ROADSHOW' ? 'SOFT_CONFIRM-A' : 'SOFT_CONFIRM-B';
-    const hasData = lead.event === 'ROADSHOW' ? !!lead.visit_date : lead.session === 'S1' || lead.session === 'S2';
-    if (hasData) {
-      return { ...base, intent: 'SOFT_ACK', draft_text: render(code), draft_source: 'TEMPLATE', template_code: code, reason: 'Short reply, not an attendance confirmation: ask to confirm', notes: ['Status unchanged'] };
-    }
-    // No date/session yet: LLM drafts the same pattern asking for it.
-    input = { ...input, instruction: [input.instruction, 'Klien hanya membalas singkat (belum menyatakan hadir). Buat draft pola SOFT_CONFIRM: ucapkan sama-sama lalu tanyakan dengan sopan ' + (lead.event === 'ROADSHOW' ? 'hari kunjungan yang dipilih (23–29 November)' : 'sesi yang dipilih (11.00–13.00 atau 15.00–17.00)') + '. Jangan menulis bahwa kehadiran sudah dicatat.'].filter(Boolean).join(' ') };
+    // Short reply, not an attendance confirmation: the LLM thanks them and asks to confirm the day/session.
+    const has = lead.event === 'ROADSHOW' ? !!lead.visit_date : lead.session === 'S1' || lead.session === 'S2';
+    const ask = lead.event === 'ROADSHOW'
+      ? (has ? `apakah tetap berkunjung pada ${lead.visit_date_label} dan sekitar pukul berapa` : 'hari kunjungan yang dipilih (23–29 November)')
+      : (has ? 'apakah tetap hadir di sesi yang dipilih' : 'sesi yang dipilih (11.00–13.00 atau 15.00–17.00)');
+    input = { ...input, instruction: [input.instruction, `Klien hanya membalas singkat (belum menyatakan hadir). Ucapkan sama-sama lalu tanyakan dengan sopan ${ask}. Jangan menulis bahwa kehadiran sudah dicatat.`].filter(Boolean).join(' ') };
   }
   // 3. Media.
   if (hasMedia(joined)) {

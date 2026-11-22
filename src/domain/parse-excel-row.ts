@@ -45,15 +45,21 @@ export function parseGuests(raw: unknown): { guests: number | null; guests_bucke
   return { guests: null, guests_bucket: 'unknown', info_only: false };
 }
 
+/**
+ * Status cell -> state. Current labels: New / Reminder / Done. Old Bitrix/Excel labels ("Belum balas", "Sudah balas",
+ * "Terkonfirmasi", ...) mean the lead was already contacted, so they map to REMINDER; "Belum chat" or empty is NEW.
+ */
 export function mapExcelStatus(raw: unknown): LeadState {
   const s = clean(raw).toLowerCase();
-  if (s === 'belum balas') return 'AWAITING_REPLY';
-  if (s === 'sudah balas') return 'REPLIED';
-  if (s === 'no whatsapp') return 'NO_WHATSAPP';
-  if (s === 'terkonfirmasi') return 'CONFIRMED';
-  if (s === 'tidak hadir') return 'DECLINED';
-  if (s === 'opt-out' || s === 'opt out') return 'OPTED_OUT';
-  return 'NEW';
+  if (s === '' || s === 'new' || s === 'belum chat') return 'NEW';
+  if (s === 'done' || s === 'hadir') return 'DONE';
+  return 'REMINDER';
+}
+
+/** Flags carried by old status labels that no longer exist as states. */
+export function legacyStatusFlags(raw: unknown): { opt_out: boolean; no_whatsapp: boolean } {
+  const s = clean(raw).toLowerCase();
+  return { opt_out: s === 'opt-out' || s === 'opt out' || s === 'tidak hadir', no_whatsapp: s === 'no whatsapp' };
 }
 
 
@@ -69,7 +75,7 @@ function base(event: EventCode, row: Record<string, unknown>, _rowRef: string): 
   const lead = emptyLead({
     event, full_name, call_name: cn.callName, call_name_needs_review: cn.needsReview, agent_name: cn.agentName,
     gender, phone_e164: ph.phone, phone_invalid: ph.invalid, email: clean(row['Email']),
-    state: mapExcelStatus(row['Status']), bitrix_status: clean(row['Status in Bitrix']),
+    state: mapExcelStatus(row['Status']), ...legacyStatusFlags(row['Status']), bitrix_status: clean(row['Status in Bitrix']),
   });
   return { lead, warnings };
 }

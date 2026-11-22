@@ -4,8 +4,8 @@ import { getCookie } from 'hono/cookie';
 import { z, ZodError } from 'zod';
 import { EVENT_CODES, type EventCode } from '../../config/events';
 import { TEMPLATE_VARS } from '../../config/templates';
-import { H1_CASES, REMINDER_CASES, resolveCase } from '../domain/cases';
-import { buildDashboard, roomMeta, type LeadView } from '../domain/dashboard';
+import { FIRST_CASES, REMINDER_CASES, REMINDER_TEMPLATES, resolveCase, sortKey } from '../domain/cases';
+import { buildDashboard, roomMeta, sortLeads, type LeadView } from '../domain/dashboard';
 import { formatBitrixTitle } from '../domain/bitrix-title';
 import { deriveCallName, normalizeGender } from '../domain/names';
 import { alsoRegisteredIn, nextMessage, renderForLead } from '../domain/next-message';
@@ -29,7 +29,7 @@ type C = Context<{ Bindings: Env; Variables: { svc: Services } }>;
 
 const err = (c: C, status: number, code: string, message: string) => c.json({ error: { code, message } }, status as 400);
 
-const LeadStateZ = z.enum(['NEW', 'AWAITING_REPLY', 'REPLIED', 'CONFIRMED', 'DECLINED', 'OPTED_OUT', 'NO_WHATSAPP']);
+const LeadStateZ = z.enum(['NEW', 'REMINDER', 'DONE']);
 const IsoZ = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Tanggal/waktu tidak valid');
 
 const LeadPatchZ = z.object({
@@ -53,6 +53,7 @@ const LeadPatchZ = z.object({
   pa_forwarded: z.boolean(),
   pa_preferred_time: z.string().max(200),
   opt_out: z.boolean(),
+  no_whatsapp: z.boolean(),
   needs_attention: z.boolean(),
 }).partial();
 
@@ -105,14 +106,9 @@ export function applyPatch(lead: Lead, p: z.infer<typeof LeadPatchZ>): Lead {
   if (p.info_only !== undefined) l.info_only = p.info_only;
   if (p.guests !== undefined) { l.guests = p.guests; if (p.guests != null) l.guests_bucket = ''; }
   if (p.guests_bucket !== undefined) { l.guests_bucket = p.guests_bucket; if (p.guests_bucket === '3+' && (l.guests ?? 0) < 3) l.guests = null; }
-  if (p.state !== undefined) {
-    l.state = p.state;
-    if (p.state === 'OPTED_OUT') l.opt_out = true;
-    if (p.state === 'CONFIRMED' && !l.confirmed_at) l.confirmed_at = new Date().toISOString();
-  }
+  if (p.state !== undefined) l.state = p.state;
   for (const k of ['bitrix_status', 'notes', 'pa_preferred_time'] as const) if (p[k] !== undefined) l[k] = p[k]!;
-  for (const k of ['needs_pa', 'pa_forwarded', 'opt_out', 'needs_attention'] as const) if (p[k] !== undefined) l[k] = p[k]!;
-  if (l.opt_out && l.state !== 'OPTED_OUT' && p.opt_out) l.state = 'OPTED_OUT';
+  for (const k of ['needs_pa', 'pa_forwarded', 'opt_out', 'no_whatsapp', 'needs_attention'] as const) if (p[k] !== undefined) l[k] = p[k]!;
   return l;
 }
 
@@ -135,28 +131,33 @@ export function onInbound(lead: Lead, msgs: Message[]): string | null {
   const last = msgs.reduce((m, x) => (x.sent_at > m ? x.sent_at : m), lead.last_inbound_at ?? '');
   lead.last_inbound_at = last || lead.last_inbound_at;
   let warning: string | null = null;
-  if (lead.state === 'DECLINED' || lead.state === 'OPTED_OUT') {
-    warning = `Lead ini sebelumnya berstatus ${lead.state === 'DECLINED' ? 'Tidak hadir' : 'Opt-out'}. Status diubah ke Sudah balas, periksa isi pesannya.`;
+  if (lead.opt_out || lead.no_whatsapp) {
+    warning = 'Lead ini sebelumnya ditandai jangan dihubungi / No WhatsApp. Tanda itu dihapus karena klien membalas, periksa isi pesannya.';
     lead.opt_out = false;
-    lead.state = 'REPLIED';
-  } else if (['NEW', 'AWAITING_REPLY', 'NO_WHATSAPP'].includes(lead.state)) {
-    lead.state = 'REPLIED';
+    lead.no_whatsapp = false;
   }
+  // A client who writes is in contact: move out of NEW.
+  if (lead.state === 'NEW') lead.state = 'REMINDER';
   return warning;
 }
 
 export function onOutbound(lead: Lead, at: string, templateCode = '') {
   lead.last_outbound_at = at;
   lead.first_sent_at ||= at;
-  if (lead.state === 'NEW') lead.state = 'AWAITING_REPLY';
-  if (['A-R1', 'A-R2', 'B-R'].includes(templateCode)) lead.reminder_count += 1;
+  if (lead.state === 'NEW') lead.state = 'REMINDER';
+  if (REMINDER_TEMPLATES.includes(templateCode)) { lead.reminder_count += 1; lead.last_reminder_at = at; }
   if (templateCode) lead.last_template = templateCode;
-  if (templateCode.startsWith('KONF-')) { lead.state = 'CONFIRMED'; lead.confirmed_at = at; }
+  // Confirmation is recorded, but the lead stays in Reminder until marked Done (attended).
+  if (templateCode.startsWith('KONF-')) lead.confirmed_at = at;
 }
 
 function view(l: Lead, all: Message[], now: Date): LeadView {
   const room = roomMeta(all.filter((m) => m.lead_id === l.lead_id));
-  return { ...l, case: resolveCase(l, now).code, room, created_today: !!l.created_at && wib(new Date(l.created_at)).date === wib(now).date };
+  const c = resolveCase(l, now);
+  return {
+    ...l, case: c.code, due: c.due, sort_key: sortKey(l, c, now, room.last_dir === 'IN'), room,
+    created_today: !!l.created_at && wib(new Date(l.created_at)).date === wib(now).date,
+  };
 }
 
 export function createApp(factory: ServicesFactory, clock: () => Date = () => new Date()) {
@@ -201,7 +202,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
   const loadAll = async (c: C) => {
     const now = clock();
     const [leads, msgs] = await Promise.all([c.var.svc.repo.leads(now), c.var.svc.repo.allMessages()]);
-    return { now, leads, msgs, views: leads.map((l) => view(l, msgs, now)) };
+    return { now, leads, msgs, views: sortLeads(leads.map((l) => view(l, msgs, now))) };
   };
 
   app.get('/api/dashboard', async (c) => {
@@ -235,7 +236,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     const { last_contacted_at, pasted_history, force: _f, event: _e, ...patch } = body;
     lead = applyPatch(lead, patch);
     if (body.event === 'JESSELTON') { lead.visit_date = '2026-11-28'; lead.visit_date_label = dateLabel('2026-11-28'); }
-    if (lead.state === 'AWAITING_REPLY') {
+    if (lead.state === 'REMINDER') {
       const at = last_contacted_at ?? new Date(now.getTime() - 24 * 3600_000).toISOString();
       lead.first_sent_at = at; lead.last_outbound_at = at;
     }
@@ -408,12 +409,11 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
       const n = nextMessage(l, leads, templates, now, events);
       return { lead: view(l, msgs, now), next: n, contact_name: formatBitrixTitle(l) };
     }).filter(({ lead: l, next }) => {
-      if (l.state === 'NO_WHATSAPP' || l.state === 'OPTED_OUT' || l.opt_out || l.state === 'REPLIED') return false;
-      if (kind === 'first') return l.state === 'NEW' && !!next.template_code;
-      if (kind === 'reminder') return REMINDER_CASES.includes(next.case.code);
-      if (kind === 'h1') return H1_CASES.includes(next.case.code);
+      if (!next.template_code) return false;
+      if (kind === 'first') return FIRST_CASES.includes(next.case.code);
+      if (kind === 'reminder') return REMINDER_CASES.includes(next.case.code) && next.case.due;
       return false;
-    });
+    }).sort((a, b) => a.lead.sort_key.localeCompare(b.lead.sort_key));
     return c.json({ items, link_format: settings.link_format });
   });
 

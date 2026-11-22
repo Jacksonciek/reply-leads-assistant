@@ -14,7 +14,6 @@ export interface NextMessage {
   warnings: string[];
 }
 
-const FIRST_A = ['A1', 'A2'];
 const FIRST_B = ['B1', 'B2', 'B3', 'B4', 'B5'];
 const B_INTRO = 'Perkenalkan, saya Jackson dari tim penyelenggara Jesselton Courtyard Private Property Preview bersama Berjaya Properties.';
 
@@ -30,12 +29,8 @@ export function alsoRegisteredIn(lead: Lead, all: Lead[]): EventCode[] {
   return [...new Set(all.filter((o) => o.lead_id !== lead.lead_id && o.event !== lead.event && o.phone_e164 === lead.phone_e164).map((o) => o.event))];
 }
 
-export function renderCrossEvent(code: string, base: string, templates: TemplateMap, vars: Vars): string {
-  if (FIRST_A.includes(code)) {
-    const paras = base.split('\n\n');
-    const intro = renderTemplate('CROSS_EVENT-A', templates, vars);
-    return [intro, ...paras.slice(2)].join('\n\n');
-  }
+/** Jesselton first message for a number already contacted for the Roadshow (Roadshow's own variant was removed). */
+export function renderCrossEvent(base: string, templates: TemplateMap, vars: Vars): string {
   const sentence = renderTemplate('CROSS_EVENT-B', templates, vars);
   if (!base.includes(B_INTRO)) throw new RenderError('Intro sentence not found for the CROSS_EVENT variant');
   return base.replace(B_INTRO, sentence);
@@ -54,10 +49,10 @@ export function nextMessage(
   try {
     const vars = buildVars(lead, events, now);
     let text = renderTemplate(c.template, templates, vars);
-    const other = (FIRST_A.includes(c.template) || FIRST_B.includes(c.template)) ? crossEventOf(lead, all) : undefined;
+    const other = FIRST_B.includes(c.template) ? crossEventOf(lead, all) : undefined;
     if (other) {
       try {
-        text = renderCrossEvent(c.template, text, templates, vars);
+        text = renderCrossEvent(text, templates, vars);
         res.cross_event = other.event;
       } catch (e) {
         res.warnings.push(`CROSS_EVENT variant not used: ${(e as Error).message}`);

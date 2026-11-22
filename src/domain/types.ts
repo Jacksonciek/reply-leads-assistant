@@ -1,6 +1,7 @@
 import type { EventCode } from '../../config/events';
 
-export type LeadState = 'NEW' | 'AWAITING_REPLY' | 'REPLIED' | 'CONFIRMED' | 'DECLINED' | 'OPTED_OUT' | 'NO_WHATSAPP';
+/** NEW = not contacted yet, REMINDER = in the reminder stage, DONE = attended (finished). */
+export type LeadState = 'NEW' | 'REMINDER' | 'DONE';
 export type Gender = 'Bapak' | 'Ibu' | '';
 export type LeadSource = 'Agent' | 'Meta' | 'Website' | '';
 export type Session = 'S1' | 'S2' | 'UNDECIDED' | 'NONE';
@@ -32,12 +33,17 @@ export interface Lead {
   last_outbound_at: string | null;
   last_inbound_at: string | null;
   reminder_count: number;
+  /** When the last reminder template was marked sent (drives the reminder rounds). */
+  last_reminder_at: string | null;
   last_template: string;
   confirmed_at: string | null;
   needs_pa: boolean;
   pa_preferred_time: string;
   pa_forwarded: boolean;
+  /** Do not contact (opt-out or declined). */
   opt_out: boolean;
+  /** Number is not on WhatsApp. */
+  no_whatsapp: boolean;
   needs_attention: boolean;
   notes: string;
   created_at: string;
@@ -96,8 +102,8 @@ export function emptyLead(partial: Partial<Lead> = {}): Lead {
     phone_e164: '', phone_invalid: false, email: '', source: '', agent_name: '', visit_date: null,
     visit_date_label: '', arrival_time: '', session: 'NONE', info_only: false, guests: null, guests_bucket: 'unknown',
     state: 'NEW', bitrix_status: '', case_code: '', first_sent_at: null, last_outbound_at: null,
-    last_inbound_at: null, reminder_count: 0, last_template: '', confirmed_at: null, needs_pa: false,
-    pa_preferred_time: '', pa_forwarded: false, opt_out: false, needs_attention: false, notes: '', created_at: '',
+    last_inbound_at: null, reminder_count: 0, last_reminder_at: null, last_template: '', confirmed_at: null, needs_pa: false,
+    pa_preferred_time: '', pa_forwarded: false, opt_out: false, no_whatsapp: false, needs_attention: false, notes: '', created_at: '',
     updated_at: '', ...partial,
   };
 }
@@ -114,12 +120,8 @@ export function guestsKnown(lead: Pick<Lead, 'guests' | 'guests_bucket'>): boole
 }
 
 export const STATE_LABEL: Record<LeadState, string> = {
-  NEW: 'Belum chat',
-  AWAITING_REPLY: 'Belum balas',
-  REPLIED: 'Sudah balas',
-  CONFIRMED: 'Terkonfirmasi',
-  DECLINED: 'Tidak hadir',
-  OPTED_OUT: 'Opt-out',
-  NO_WHATSAPP: 'No WhatsApp',
+  NEW: 'New',
+  REMINDER: 'Reminder',
+  DONE: 'Done',
 };
 export const STATUS_OPTIONS = Object.values(STATE_LABEL);

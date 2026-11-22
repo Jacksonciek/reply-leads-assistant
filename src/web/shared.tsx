@@ -17,10 +17,7 @@ export const INTENT_EN: Record<string, string> = {
 };
 
 /** UI labels. The Indonesian STATE_LABEL stays as-is because it is written to the Status column in Sheets. */
-export const STATE_EN: Record<LeadState, string> = {
-  NEW: 'Not contacted', AWAITING_REPLY: 'Awaiting reply', REPLIED: 'Replied', CONFIRMED: 'Confirmed',
-  DECLINED: 'Declined', OPTED_OUT: 'Opted out', NO_WHATSAPP: 'No WhatsApp',
-};
+export const STATE_EN: Record<LeadState, string> = { NEW: 'New', REMINDER: 'Reminder', DONE: 'Done' };
 
 export function EventChip({ event }: { event: EventCode }) {
   return (
@@ -51,16 +48,16 @@ export function Avatar({ name, event, size = 36 }: { name: string; event: EventC
 }
 
 const CASE_COLORS: Record<string, string> = {
-  X: 'bg-black/[0.05] text-ink-3', CONV: 'bg-amber-50 text-amber-800', WAIT: 'bg-black/[0.04] text-ink-2', DONE: 'bg-emerald-50 text-emerald-800',
+  X: 'bg-black/[0.05] text-ink-3', WAIT: 'bg-black/[0.04] text-ink-2', DONE: 'bg-emerald-50 text-emerald-800',
+  A3: 'bg-orange-50 text-orange-800', A4: 'bg-orange-50 text-orange-800', B6: 'bg-orange-50 text-orange-800'
 };
 export function CaseChip({ code }: { code: string }) {
   const color = CASE_COLORS[code] ?? (code.includes('R') ? 'bg-orange-50 text-orange-800' : code.includes('H1') ? 'bg-violet-50 text-violet-800' : 'bg-sky-50 text-sky-800');
   return <span className={`chip font-mono text-[11px] ${color}`}>{code}</span>;
 }
 
-const STATE_COLORS: Partial<Record<LeadState, string>> = {
-  NEW: 'bg-sky-50 text-sky-800', AWAITING_REPLY: 'bg-orange-50 text-orange-800', REPLIED: 'bg-amber-50 text-amber-800',
-  CONFIRMED: 'bg-emerald-50 text-emerald-800', DECLINED: 'bg-black/[0.05] text-ink-2', OPTED_OUT: 'bg-red-50 text-red-700', NO_WHATSAPP: 'bg-black/[0.05] text-ink-3',
+const STATE_COLORS: Record<LeadState, string> = {
+  NEW: 'bg-sky-50 text-sky-800', REMINDER: 'bg-orange-50 text-orange-800', DONE: 'bg-emerald-50 text-emerald-800',
 };
 export function StateChip({ state }: { state: LeadState }) {
   return <span className={`chip ${STATE_COLORS[state] ?? ''}`}>{STATE_EN[state]}</span>;

@@ -77,14 +77,18 @@ describe('sheet row sync', () => {
     }
   });
   it('Roadshow round trip', () => {
-    const l = rl({ visit_date: '2026-11-25', visit_date_label: dateLabel('2026-11-25'), arrival_time: '14:30', state: 'CONFIRMED', needs_pa: true });
+    const l = rl({ visit_date: '2026-11-25', visit_date_label: dateLabel('2026-11-25'), arrival_time: '14:30', state: 'REMINDER', needs_pa: true });
     const back = rowToLead('ROADSHOW', leadToRow(l));
-    expect([back.visit_date, back.arrival_time, back.state, back.needs_pa, back.agent_name]).toEqual(['2026-11-25', '14:30', 'CONFIRMED', true, 'Calvin Kok']);
+    expect([back.visit_date, back.arrival_time, back.state, back.needs_pa, back.agent_name]).toEqual(['2026-11-25', '14:30', 'REMINDER', true, 'Calvin Kok']);
   });
-  it('manual Status edit is the source of truth', () => {
+  it('Status is New / Reminder / Done; every older label moves to Reminder', () => {
     const row = leadToRow(rl({ state: 'NEW' }));
-    expect(rowToLead('ROADSHOW', { ...row, Status: 'Terkonfirmasi' }).state).toBe('CONFIRMED');
-    expect(rowToLead('ROADSHOW', { ...row, Status: 'Opt-out' })).toMatchObject({ state: 'OPTED_OUT', opt_out: true });
+    expect(row.Status).toBe('New');
+    expect(rowToLead('ROADSHOW', row).state).toBe('NEW');
+    expect(rowToLead('ROADSHOW', { ...row, Status: 'Done' }).state).toBe('DONE');
+    for (const old of ['Belum chat', 'Belum balas', 'Sudah balas', 'Terkonfirmasi']) expect(rowToLead('ROADSHOW', { ...row, Status: old }).state).toBe('REMINDER');
+    expect(rowToLead('ROADSHOW', { ...row, Status: 'Opt-out' })).toMatchObject({ state: 'REMINDER', opt_out: true });
+    expect(rowToLead('ROADSHOW', { ...row, Status: 'No WhatsApp' })).toMatchObject({ state: 'REMINDER', no_whatsapp: true });
   });
   it('manual call name wins; empty is derived', () => {
     const row = leadToRow(rl());
@@ -95,18 +99,16 @@ describe('sheet row sync', () => {
 
 describe('CROSS_EVENT and quick renders', () => {
   const tplApproved: TemplateMap = { ...TPL, 'CROSS_EVENT-B': { ...TPL['CROSS_EVENT-B'], status: 'APPROVED' } };
-  it('Roadshow after Jesselton uses the cross intro', () => {
-    const j = jl({ phone_e164: '6281299990000', first_sent_at: NOW.toISOString(), state: 'AWAITING_REPLY' });
+  it('Roadshow after Jesselton has no cross intro any more (normal A2, with a warning)', () => {
+    const j = jl({ phone_e164: '6281299990000', first_sent_at: NOW.toISOString(), state: 'REMINDER' });
     const r = rl({ phone_e164: '6281299990000', full_name: 'Turnip Durian', call_name: 'Turnip', gender: 'Bapak', visit_date: null });
     const n = nextMessage(r, [j, r], TPL, NOW);
-    expect(n.cross_event).toBe('JESSELTON');
-    expect(n.text).toContain('Terima kasih juga sudah mendaftar untuk Medan Property Roadshow, Pak. Acara ini terpisah dari Private Property Preview Jesselton Courtyard');
-    expect(n.text).toContain('Bila Bapak sudah memiliki gambaran');
-    expect(n.text).not.toContain('Perkenalkan');
+    expect(n.cross_event).toBeNull();
+    expect(n.text).toContain('Perkenalkan');
     expect(n.warnings.join()).toContain('Also registered for');
   });
   it('Jesselton after Roadshow: unapproved variant falls back with a warning', () => {
-    const r = rl({ phone_e164: '6281299990000', first_sent_at: NOW.toISOString(), state: 'AWAITING_REPLY' });
+    const r = rl({ phone_e164: '6281299990000', first_sent_at: NOW.toISOString(), state: 'REMINDER' });
     const j = jl({ phone_e164: '6281299990000', session: 'S1', guests: 1, guests_bucket: '' });
     const n = nextMessage(j, [j, r], TPL, NOW);
     expect(n.cross_event).toBeNull();
@@ -114,17 +116,6 @@ describe('CROSS_EVENT and quick renders', () => {
     const n2 = nextMessage(j, [j, r], tplApproved, NOW);
     expect(n2.cross_event).toBe('ROADSHOW');
     expect(n2.text).toContain('terpisah dari Medan Property Roadshow di Cambridge City Square');
-  });
-  it('REMINDER_PA uses relative day and visit day', () => {
-    const l = rl({ visit_date: '2026-11-23', visit_date_label: dateLabel('2026-11-23'), last_inbound_at: fromWib('2026-11-18', 15).toISOString(), state: 'REPLIED' });
-    const t = renderForLead('REMINDER_PA-A', l, TPL, NOW).text!;
-    expect(t).toContain('obrolannya kemarin, Bu');
-    expect(t).toContain('sampai bertemu Senin nanti 🙏');
-  });
-  it('SOFT_CONFIRM never says attendance is recorded', () => {
-    const t = renderForLead('SOFT_CONFIRM-B', jl({ session: 'S2', guests: 1, guests_bucket: '' }), TPL, NOW).text!;
-    expect(t).toContain('apakah Bapak berkenan hadir di sesi 15.00–17.00 WIB');
-    expect(checkDraft(t, { projectLink: EVENTS.JESSELTON.project_link }).flags).not.toContain('attendance_claim');
   });
   it('no template offers to stop contacting, except OPT_OUT and SOURCE', () => {
     for (const t of DEFAULT_TEMPLATES) {
@@ -152,20 +143,21 @@ describe('guardrail phrases', () => {
 });
 
 describe('dashboard', () => {
-  const v = (l: Lead, messages: Message[] = []): LeadView => ({ ...l, case: '', room: roomMeta(messages.map((m) => ({ ...m, lead_id: l.lead_id }))) });
+  const D23 = fromWib('2026-11-23', 9);
+  const v = (l: Lead, messages: Message[] = []): LeadView => ({ ...l, case: '', due: false, sort_key: '', room: roomMeta(messages.map((m) => ({ ...m, lead_id: l.lead_id }))) });
   it('queues', () => {
-    const a = v(rl({ lead_id: 'a', state: 'REPLIED' }), [msg('OUT', 'x', 0), msg('IN', 'y', 1)]);
-    const b = v(rl({ lead_id: 'b', state: 'REPLIED' }));
+    const a = v(rl({ lead_id: 'a', state: 'REMINDER', last_reminder_at: D23.toISOString() }), [msg('OUT', 'x', 0), msg('IN', 'y', 1)]);
     const c = v(jl({ lead_id: 'c', state: 'NEW', session: 'S1', guests: 1, guests_bucket: '' }));
-    const d = v(rl({ lead_id: 'd', state: 'OPTED_OUT', opt_out: true }), [msg('IN', 'z', 2)]);
-    const e = v(rl({ lead_id: 'e', state: 'AWAITING_REPLY', needs_pa: true, call_name_needs_review: true }));
-    const dash = buildDashboard([a, b, c, d, e], NOW);
-    expect(dash.unanswered.map((x) => [x.lead_id, x.reason])).toEqual([['b', 'Paste the latest chat'], ['a', 'Client message not answered']]);
+    const d = v(rl({ lead_id: 'd', state: 'REMINDER', opt_out: true }), [msg('IN', 'z', 2)]);
+    const e = v(rl({ lead_id: 'e', state: 'REMINDER', needs_pa: true, call_name_needs_review: true }));
+    const f = v(rl({ lead_id: 'f', state: 'DONE' }));
+    const dash = buildDashboard([a, c, d, e, f], D23);
+    expect(dash.unanswered.map((x) => x.lead_id)).toEqual(['a']);
     expect(dash.first_messages.map((x) => x.lead_id)).toEqual(['c']);
     expect(dash.reminders.map((x) => x.lead_id)).toEqual(['e']);
     expect(dash.pa.map((x) => x.lead_id)).toEqual(['e']);
     expect(dash.name_review.map((x) => x.lead_id)).toEqual(['e']);
-    expect(dash.stats.ROADSHOW.opted_out).toBe(1);
+    expect(dash.stats.ROADSHOW).toMatchObject({ do_not_contact: 1, done: 1, reminder: 3, reminder_due: 1, reminder_sent: 1 });
   });
 });
 
@@ -181,50 +173,51 @@ describe('generateReply pipeline', () => {
 
   it('STOP -> OPT_OUT without LLM', async () => {
     const calls: string[] = [];
-    const r = await run(jl({ state: 'REPLIED' }), [['IN', 'STOP']], fake({}, calls));
-    expect(r).toMatchObject({ intent: 'OPT_OUT', template_code: 'OPT_OUT', suggestion: { state: 'OPTED_OUT', opt_out: true } });
+    const r = await run(jl({ state: 'REMINDER' }), [['IN', 'STOP']], fake({}, calls));
+    expect(r).toMatchObject({ intent: 'OPT_OUT', template_code: 'OPT_OUT', suggestion: { opt_out: true } });
     expect(calls).toHaveLength(0);
   });
-  it('Bolon "Ok, terimakasih pak buk" before confirmation -> SOFT_CONFIRM, no state change', async () => {
-    const r = await run(jl({ state: 'AWAITING_REPLY', session: 'S2', guests: 1, guests_bucket: '' }), [['OUT', 'B1…'], ['IN', 'Ok, terimakasih pak buk']], null);
-    expect(r).toMatchObject({ intent: 'SOFT_ACK', template_code: 'SOFT_CONFIRM-B', suggestion: {} });
-    expect(r.draft_text).not.toMatch(/catat/);
+  it('Bolon "Ok, terimakasih pak buk" before confirmation -> AI asks to confirm, never says recorded', async () => {
+    const calls: string[] = [];
+    const r = await run(jl({ state: 'REMINDER', session: 'S2', guests: 1, guests_bucket: '' }), [['OUT', 'B1…'], ['IN', 'Ok, terimakasih pak buk']], fake({ intent: 'SMALL_TALK' }, calls));
+    expect(calls.join()).toContain('Jangan menulis bahwa kehadiran sudah dicatat');
+    expect(r.suggestion).toEqual({});
   });
   it('short ack after confirmation -> no reply needed', async () => {
-    const r = await run(jl({ state: 'CONFIRMED' }), [['IN', 'ok makasih']], null);
+    const r = await run(jl({ state: 'REMINDER', confirmed_at: NOW.toISOString() }), [['IN', 'ok makasih']], null);
     expect(r).toMatchObject({ intent: 'SMALL_TALK', draft_source: 'NONE', draft_text: '' });
   });
   it('confirm with complete data -> KONF-B rendered from extracted data', async () => {
-    const r = await run(jl({ state: 'REPLIED', session: 'NONE' }), [['IN', 'Hadir, saya datang ber-2 yang jam 3']], fake({ intent: 'CONFIRM_ATTEND', extracted: { visit_date: null, arrival_time: null, session: 'S2', guests: 2, pa_preferred_time: null } }));
+    const r = await run(jl({ state: 'REMINDER', session: 'NONE' }), [['IN', 'Hadir, saya datang ber-2 yang jam 3']], fake({ intent: 'CONFIRM_ATTEND', extracted: { visit_date: null, arrival_time: null, session: 'S2', guests: 2, pa_preferred_time: null } }));
     expect(r.template_code).toBe('KONF-B');
-    expect(r.draft_text).toContain('🕒 15.00–17.00 WIB · Private Preview & Afternoon Tea');
-    expect(r.draft_text).toContain('👥 2 orang');
+    expect(r.draft_text).toContain('🕒 Sesi: *15.00–17.00 WIB* · Private Preview & Afternoon Tea');
+    expect(r.draft_text).toContain('👥 Jumlah tamu: *2 orang*');
     expect(r.suggestion).toEqual({ session: 'S2', guests: 2 });
   });
   it('product question -> HANDOFF_PA even if the LLM wrote a price', async () => {
-    const r = await run(rl({ state: 'REPLIED' }), [['IN', 'berapa harganya?']], fake({ intent: 'ASK_PRODUCT', draft: 'Harganya mulai Rp 2 M' }));
+    const r = await run(rl({ state: 'REMINDER' }), [['IN', 'berapa harganya?']], fake({ intent: 'ASK_PRODUCT', draft: 'Harganya mulai Rp 2 M' }));
     expect(r.template_code).toBe('HANDOFF_PA');
     expect(r.draft_text).not.toMatch(/Rp|harga/i);
   });
   it('guardrail replaces bad LLM draft and keeps the original', async () => {
-    const r = await run(rl({ state: 'REPLIED' }), [['IN', 'acaranya gimana?']], fake({ intent: 'ASK_EVENT_INFO', draft: 'Ada diskon 10% lho Bu, nanti saya telepon ya' }));
+    const r = await run(rl({ state: 'REMINDER' }), [['IN', 'acaranya gimana?']], fake({ intent: 'ASK_EVENT_INFO', draft: 'Ada diskon 10% lho Bu, nanti saya telepon ya' }));
     expect(r.draft_source).toBe('FIXED');
     expect(r.template_code).toBe('HANDOFF_PA');
     expect(r.original_text).toContain('diskon');
     expect(r.flags.some((f) => f.startsWith('guardrail:'))).toBe(true);
   });
   it('ASK_IF_BOT human claim is rejected; honest draft passes', async () => {
-    const bad = await run(rl({ state: 'REPLIED' }), [['IN', 'ini bot ya?']], fake({ intent: 'ASK_IF_BOT', draft: 'Bukan bot kok Bu, saya manusia asli' }));
+    const bad = await run(rl({ state: 'REMINDER' }), [['IN', 'ini bot ya?']], fake({ intent: 'ASK_IF_BOT', draft: 'Bukan bot kok Bu, saya manusia asli' }));
     // ASK_IF_BOT fixed text is NEW_NEEDS_REVIEW by default -> HOLD until Jackson approves it.
     expect(bad.template_code).toBe('HOLD');
     expect(bad.original_text).toContain('manusia');
     expect(bad.flags).toContain('needs_attention');
-    const good = await run(rl({ state: 'REPLIED' }), [['IN', 'ini bot ya?']], fake({ intent: 'ASK_IF_BOT', draft: 'Pesan ini saya siapkan dengan bantuan sistem dan saya pantau sendiri, Bu Anita 😊' }));
+    const good = await run(rl({ state: 'REMINDER' }), [['IN', 'ini bot ya?']], fake({ intent: 'ASK_IF_BOT', draft: 'Pesan ini saya siapkan dengan bantuan sistem dan saya pantau sendiri, Bu Anita 😊' }));
     expect(good.draft_source).toBe('LLM');
   });
   it('LLM 429 -> HOLD with quota note', async () => {
     const llm: LlmClient = { async classify() { throw new LlmError(429, 'quota'); } };
-    const r = await run(rl({ state: 'REPLIED' }), [['IN', 'acaranya jam berapa?']], llm);
+    const r = await run(rl({ state: 'REMINDER' }), [['IN', 'acaranya jam berapa?']], llm);
     expect(r).toMatchObject({ template_code: 'HOLD', flags: ['llm_quota'] });
   });
   it('last message is mine: needs an instruction, then writes a follow-up', async () => {
@@ -239,7 +232,7 @@ describe('generateReply pipeline', () => {
   });
   it('instruction and only new client messages are sent as pesan_baru', async () => {
     const calls: string[] = [];
-    await generateReply({ lead: jl({ state: 'REPLIED' }), messages: [msg('IN', 'saya bertiga', 0), msg('OUT', 'sesi mana Pak?', 1), msg('IN', 'lokasinya dimana?', 2)], templates: TPL, faqs: [], events: EVENTS, llm: fake({ intent: 'ASK_EVENT_INFO' }, calls), now: NOW, instruction: 'lebih singkat' });
+    await generateReply({ lead: jl({ state: 'REMINDER' }), messages: [msg('IN', 'saya bertiga', 0), msg('OUT', 'sesi mana Pak?', 1), msg('IN', 'lokasinya dimana?', 2)], templates: TPL, faqs: [], events: EVENTS, llm: fake({ intent: 'ASK_EVENT_INFO' }, calls), now: NOW, instruction: 'lebih singkat' });
     const u = JSON.parse(calls[0]);
     expect(u.pesan_baru_klien).toEqual(['lokasinya dimana?']);
     expect(u.riwayat).toHaveLength(2);

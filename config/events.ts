@@ -52,6 +52,7 @@ export const EVENTS: Record<EventCode, EventConfig> = {
     facts: [
       'Acara berlangsung Senin–Minggu, 23–29 November 2026. Klien memilih satu hari kunjungan.',
       'Lokasi: Cambridge City Square, Medan, Lantai G, depan Lebanon.',
+      'Booth: area Concourse, Ground Floor, dekat Restoran Lebanon, Cambridge City Square.',
       'Nama tim di poster: Pameran Properti Malaysia.',
       'Poster: "Undangan Khusus", "Temukan Pilihan Properti di Malaysia".',
       'Lokasi properti yang ditampilkan: Penang, Kuala Lumpur, Port Dickson.',

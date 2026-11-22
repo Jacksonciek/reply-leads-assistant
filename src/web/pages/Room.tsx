@@ -23,8 +23,8 @@ interface RoomData {
 
 const DATES = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'];
 const QUICK: Record<string, string[]> = {
-  ROADSHOW: ['HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'KONF-A', 'SOFT_CONFIRM-A', 'REMINDER_PA-A', 'A3', 'A4', 'POSTER-A'],
-  JESSELTON: ['HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'KONF-B', 'SOFT_CONFIRM-B', 'REMINDER_PA-B', 'B4', 'B5', 'POSTER-B'],
+  ROADSHOW: ['A3', 'A4', 'KONF-A', 'HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'A1', 'A2', 'POSTER-A'],
+  JESSELTON: ['B6', 'B-R', 'B-H1', 'KONF-B', 'HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'B4', 'B5', 'POSTER-B'],
 };
 const SOURCE_LABEL: Record<string, string> = { PASTED: 'pasted', TEMPLATE: 'template', LLM_DRAFT: 'AI draft', EDITED_DRAFT: 'edited draft', MANUAL: 'manual' };
 // Hints are passed to the model as instructions; the reply itself stays in Indonesian.
@@ -124,7 +124,7 @@ function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: ()
           <div className="py-10 text-center">
             <p className="text-[15px] font-medium">No messages yet</p>
             <p className="mx-auto mt-1 max-w-xs text-sm text-ink-3">
-              {d.lead.state === 'REPLIED' ? 'Paste the latest chat from WhatsApp below.' : 'Start with the first message below, or paste the client reply.'}
+              {d.lead.state === 'NEW' ? 'Start with the first message below, or paste the client reply.' : 'Copy the reminder below, or paste the latest chat from WhatsApp.'}
             </p>
           </div>
         )}
@@ -189,7 +189,8 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   const [saving, setSaving] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
 
-  const mode: 'draft' | 'template' | 'none' = draft ? 'draft' : next.template_code && !lastIsIn ? 'template' : 'none';
+  // The ready message (first message / reminder) stays visible even when the client wrote last.
+  const mode: 'draft' | 'template' | 'none' = draft ? 'draft' : next.template_code ? 'template' : 'none';
   useEffect(() => {
     if (draft) { setText(draft.draft_text); setCode(draft.template_code || undefined); }
     else if (mode === 'template') { setText(next.text ?? ''); setCode(next.template_code ?? undefined); }
@@ -216,7 +217,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   }
   if (mode === 'none' && !text) {
     if (!lastIsIn) {
-      const why = next.case.code === 'WAIT' ? 'Waiting for the client. A reminder appears after 24 hours.' : next.error ?? next.case.reason;
+      const why = next.error ?? next.case.reason;
       return why ? <p className="pt-4 text-center text-xs text-ink-3">{why}</p> : null;
     }
     return (
@@ -232,7 +233,9 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   const suggestion = draft?.suggestion_json ? JSON.parse(draft.suggestion_json) as Record<string, unknown> : {};
   const extracted = draft?.extracted_json ? Object.entries(JSON.parse(draft.extracted_json) as Record<string, unknown>).filter(([, v]) => v != null && v !== '') : [];
   const dirty = !!draft && text !== draft.draft_text;
-  const posterCode = code === 'A3' || code === 'A4' || code?.startsWith('POSTER') || flags.includes('attach_poster') || (mode === 'template' && lead.state === 'NEW');
+  const posterCode = code?.startsWith('POSTER') || flags.includes('attach_poster') || (mode === 'template' && lead.state === 'NEW');
+  const label = mode !== 'template' ? 'Draft · not sent' : lead.state === 'NEW' ? 'First message · not sent'
+    : next.case.due ? 'Reminder · ready to copy' : 'Reminder · already sent this round';
 
   const markSent = async (final: string) => {
     await api(`/api/leads/${lead.lead_id}/mark-sent`, { body: { text: final, template_code: draft ? undefined : code, draft_id: draft?.draft_id } });
@@ -252,10 +255,16 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   };
 
   return (
+    <>
+    {lastIsIn && !draft && (
+      <div className="flex justify-center pt-4">
+        <button className="btn-accent" onClick={() => generate()}>Draft a reply to the client</button>
+      </div>
+    )}
     <div className="flex justify-end pt-2">
       <div className="animate-rise w-full max-w-[560px] rounded-lg rounded-tr-sm border border-dashed border-emerald-500/60 bg-[#f3fdf1] p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
         <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
-          <span className="chip bg-accent-soft text-accent">{mode === 'template' ? 'Next message' : 'Draft'} · not sent</span>
+          <span className={`chip ${mode === 'template' && !next.case.due && lead.state !== 'NEW' ? 'bg-black/[0.05] text-ink-2' : 'bg-accent-soft text-accent'}`}>{label}</span>
           {draft && <span className="chip bg-black/[0.04] text-ink-2">{draft.draft_source === 'LLM' ? 'AI' : draft.draft_source === 'TEMPLATE' ? 'Template' : draft.draft_source === 'FIXED' ? 'Fixed' : 'Manual'}</span>}
           {code && <CaseChip code={code} />}
           {dirty && <span className="chip bg-amber-50 text-amber-800">Unsaved</span>}
@@ -296,6 +305,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -471,7 +481,8 @@ function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
         </Row>
       </div>
       {d.also_registered.length > 0 && <p className="mt-2 text-xs text-sky-800">Also registered for {d.also_registered.map((e) => (e === 'ROADSHOW' ? 'Roadshow' : 'Jesselton')).join(', ')}</p>}
-      {lead.state === 'NO_WHATSAPP' && <p className="mt-2 rounded-xl bg-canvas p-2.5 text-xs text-ink-2">No WhatsApp: excluded from the queues.</p>}
+      {lead.no_whatsapp && <p className="mt-2 rounded-xl bg-canvas p-2.5 text-xs text-ink-2">No WhatsApp: no reminder is prepared.</p>}
+      {lead.opt_out && <p className="mt-2 rounded-xl bg-red-50 p-2.5 text-xs text-red-700">Do not contact (opt-out / declined): no reminder is prepared.</p>}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button className="btn-ghost text-[13px]" onClick={async () => { await copyText(d.contact_name); toast('Contact name copied'); }}>Copy contact name</button>
         <a className="btn-ghost text-[13px]" href={`https://wa.me/${lead.phone_e164}`} target="_blank" rel="noopener">Open chat</a>
@@ -526,9 +537,14 @@ function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
           {Object.entries(STATE_EN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <div className="mt-2 flex flex-wrap gap-2">
-          {lead.state !== 'CONFIRMED' && <button className="btn-ghost h-9 min-h-9 text-[13px]" onClick={() => patch({ state: 'CONFIRMED' }, 'Marked as confirmed')}>Confirmed</button>}
+          {lead.state !== 'DONE' && <button className="btn-ghost h-9 min-h-9 text-[13px]" onClick={() => patch({ state: 'DONE' }, 'Marked as Done (attended)')}>Attended · Done</button>}
           {lead.needs_attention && <button className="btn-ghost h-9 min-h-9 text-[13px]" onClick={() => patch({ needs_attention: false }, 'Attention flag cleared')}>Handled</button>}
-          {!lead.opt_out && <button className="btn-danger h-9 min-h-9 text-[13px]" onClick={() => window.confirm('Mark as opted out? This lead will no longer appear in queues.') && patch({ state: 'OPTED_OUT', opt_out: true }, 'Marked as opted out')}>Opt out</button>}
+          {lead.opt_out || lead.no_whatsapp
+            ? <button className="btn-ghost h-9 min-h-9 text-[13px]" onClick={() => patch({ opt_out: false, no_whatsapp: false }, 'Can be contacted again')}>Allow contact again</button>
+            : <>
+                <button className="btn-ghost h-9 min-h-9 text-[13px]" onClick={() => patch({ no_whatsapp: true }, 'Marked as No WhatsApp')}>No WhatsApp</button>
+                <button className="btn-danger h-9 min-h-9 text-[13px]" onClick={() => window.confirm('Mark as do not contact? No more reminders will be prepared.') && patch({ opt_out: true }, 'Marked as do not contact')}>Opt out</button>
+              </>}
         </div>
       </div>
       {lead.needs_pa && !lead.pa_forwarded && (

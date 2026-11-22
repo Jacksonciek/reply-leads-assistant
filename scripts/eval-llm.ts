@@ -33,7 +33,7 @@ const per = new Map<string, { ok: number; n: number }>();
 
 for (const c of cases) {
   const lead = emptyLead({
-    lead_id: `L${c.id}`, event: c.event, full_name: 'Budi Santoso', call_name: 'Budi', gender: 'Bapak', state: 'REPLIED',
+    lead_id: `L${c.id}`, event: c.event, full_name: 'Budi Santoso', call_name: 'Budi', gender: 'Bapak', state: 'REMINDER',
     phone_e164: '6281200000000', source: c.event === 'ROADSHOW' ? 'Agent' : 'Meta', ...c.lead,
   });
   if (lead.event === 'ROADSHOW' && lead.visit_date) lead.visit_date_label = dateLabel(lead.visit_date);

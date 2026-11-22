@@ -85,7 +85,7 @@ Opsional: tambahkan **Cloudflare Access** (Zero Trust → Access → Application
   - Tempel di kotak **Tempel balasan klien** → **Pratinjau** (periksa Klien/Saya, ketuk label untuk menukar) → **Simpan & buat draft**.
 - **Draft:** baca intent dan alasan di atas draft, edit bila perlu. **Buat ulang** bisa diberi instruksi ("lebih singkat"). **Sisip cepat** untuk teks tetap/template. Bila ada saran (mis. "Tidak hadir", sesi/jumlah), klik **Terapkan**. Status tidak pernah berubah tanpa klik Anda.
 - **Tambah pesan saya:** untuk pesan yang Anda ketik langsung di WhatsApp.
-- **Poster:** untuk A3/A4 dan caption poster, unduh poster, kirim gambarnya dengan teks sebagai caption.
+- **Poster:** untuk INFO_ULANG-A/INFO-A dan caption poster, unduh poster, kirim gambarnya dengan teks sebagai caption.
 - **FAQ:** Lainnya → Pengetahuan. Hanya FAQ yang **Disetujui** yang dipakai AI.
 - **Rekap untuk atasan:** Lead → **Ekspor .xlsx**.
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EVENTS } from '../config/events';
 import { DEFAULT_TEMPLATES } from '../config/templates';
 import { formatBitrixTitle, parseBitrixTitle } from '../src/domain/bitrix-title';
-import { resolveCase } from '../src/domain/cases';
+import { resolveCase, sortKey } from '../src/domain/cases';
 import { checkDraft } from '../src/domain/guardrails';
 import { clickToSendLink } from '../src/domain/links';
 import { deriveCallName } from '../src/domain/names';
@@ -137,32 +137,47 @@ const rl = (p: Partial<Lead>) => emptyLead({ event: 'ROADSHOW', call_name: 'Budi
 describe('resolveCase extras', () => {
   it('B3 synthetic', () => expect(resolveCase(jl({ session: 'NONE', guests: 2, guests_bucket: '' }), NOW).code).toBe('B3'));
   it('B3 with 3+', () => expect(resolveCase(jl({ session: 'UNDECIDED', guests_bucket: '3+' }), NOW).code).toBe('B3'));
-  it('reminder 23h vs 24h', () => {
-    const sent = '2026-11-19T00:00:00Z';
-    expect(resolveCase(rl({ state: 'AWAITING_REPLY', first_sent_at: sent, last_outbound_at: sent }), new Date('2026-11-19T23:00:00Z')).code).toBe('WAIT');
-    expect(resolveCase(rl({ state: 'AWAITING_REPLY', first_sent_at: sent, last_outbound_at: sent }), new Date('2026-11-20T00:00:00Z')).code).toBe('A-R2');
+  it('roadshow reminder rounds: 23 Nov and H-1, A4 with date, A3 without', () => {
+    const d23 = fromWib('2026-11-23', 9);
+    const v27 = rl({ state: 'REMINDER', visit_date: '2026-11-27', visit_date_label: 'Jumat, 27 November 2026' });
+    expect(resolveCase(v27, d23)).toMatchObject({ code: 'A4', due: true });
+    const sent23 = { ...v27, last_reminder_at: fromWib('2026-11-23', 10).toISOString() };
+    expect(resolveCase(sent23, fromWib('2026-11-23', 11))).toMatchObject({ code: 'A4', due: false });
+    expect(resolveCase(sent23, fromWib('2026-11-25', 9))).toMatchObject({ code: 'A4', due: false });
+    expect(resolveCase(sent23, fromWib('2026-11-26', 9))).toMatchObject({ code: 'A4', due: true }); // H-1
+    expect(resolveCase(rl({ state: 'REMINDER' }), d23)).toMatchObject({ code: 'A3', due: true });
+    expect(resolveCase(rl({ state: 'REMINDER', visit_date: '2026-11-23' }), d23)).toMatchObject({ code: 'A4', due: true });
   });
-  it('third reminder refused', () => {
-    expect(resolveCase(rl({ state: 'AWAITING_REPLY', reminder_count: 2, last_outbound_at: '2026-11-15T00:00:00Z' }), NOW).code).toBe('WAIT');
+  it('roadshow: passed visit date asks again (A3, not due); over after the event', () => {
+    expect(resolveCase(rl({ state: 'REMINDER', visit_date: '2026-11-23' }), fromWib('2026-11-24', 9))).toMatchObject({ code: 'A3', due: false });
+    expect(resolveCase(rl({ state: 'REMINDER' }), fromWib('2026-11-30', 9)).code).toBe('WAIT');
   });
-  it('no reminder after event / after chosen date', () => {
-    expect(resolveCase(jl({ state: 'AWAITING_REPLY' }), new Date('2026-11-29T03:00:00Z')).code).toBe('WAIT');
-    expect(resolveCase(rl({ state: 'AWAITING_REPLY', visit_date: '2026-11-23' }), new Date('2026-11-24T03:00:00Z')).code).toBe('WAIT');
-    expect(resolveCase(rl({ state: 'AWAITING_REPLY' }), new Date('2026-11-30T03:00:00Z')).code).toBe('WAIT');
+  it('jesselton reminder: B6 when session known, B-R otherwise, B-H1 from 27 Nov', () => {
+    const d23 = fromWib('2026-11-23', 9);
+    expect(resolveCase(jl({ state: 'REMINDER', session: 'S2', guests: 2, guests_bucket: '' }), d23)).toMatchObject({ code: 'B6', due: true });
+    expect(resolveCase(jl({ state: 'REMINDER', session: 'NONE' }), d23)).toMatchObject({ code: 'B-R', due: true });
+    const sent = jl({ state: 'REMINDER', session: 'S1', last_reminder_at: fromWib('2026-11-23', 10).toISOString() });
+    expect(resolveCase(sent, fromWib('2026-11-25', 9))).toMatchObject({ code: 'B6', due: false });
+    expect(resolveCase(sent, fromWib('2026-11-27', 9))).toMatchObject({ code: 'B-H1', due: true });
+    expect(resolveCase(jl({ state: 'REMINDER' }), new Date('2026-11-29T03:00:00Z')).code).toBe('WAIT');
   });
-  it('no reminder when client replied since', () => {
-    expect(resolveCase(rl({ state: 'AWAITING_REPLY', last_outbound_at: '2026-11-17T00:00:00Z', last_inbound_at: '2026-11-18T00:00:00Z' }), NOW).code).toBe('WAIT');
+  it('NEW gets the first message, DONE nothing, flags exclude', () => {
+    expect(resolveCase(rl({ visit_date: '2026-11-25' }), NOW)).toMatchObject({ code: 'A1', due: true });
+    expect(resolveCase(rl({ state: 'DONE' }), NOW).code).toBe('DONE');
+    expect(resolveCase(rl({ state: 'REMINDER', no_whatsapp: true }), NOW).code).toBe('X');
   });
-  it('H-1 roadshow', () => {
-    const l = rl({ state: 'CONFIRMED', visit_date: '2026-11-25', visit_date_label: 'Rabu, 25 November 2026' });
-    expect(resolveCase(l, fromWib('2026-11-24', 9)).code).toBe('A-H1');
-    expect(resolveCase(l, fromWib('2026-11-23', 9)).code).toBe('DONE');
-    expect(resolveCase({ ...l, last_template: 'A-H1' }, fromWib('2026-11-24', 9)).code).toBe('DONE');
-  });
-  it('H-1 jesselton Friday from 08.00', () => {
-    const l = jl({ state: 'CONFIRMED', session: 'S1', guests: 1, guests_bucket: '' });
-    expect(resolveCase(l, fromWib('2026-11-27', 7, 59)).code).toBe('DONE');
-    expect(resolveCase(l, fromWib('2026-11-27', 8)).code).toBe('B-H1');
+  it('sort: Roadshow first, due before sent, visit today then tomorrow then later then undecided', () => {
+    const now = fromWib('2026-11-23', 9);
+    const key = (l: Lead) => sortKey(l, resolveCase(l, now), now);
+    const ls = [
+      jl({ full_name: 'J', state: 'REMINDER', session: 'S1' }),
+      rl({ full_name: 'TBC', state: 'REMINDER' }),
+      rl({ full_name: 'Later', state: 'REMINDER', visit_date: '2026-11-27' }),
+      rl({ full_name: 'Tomorrow', state: 'REMINDER', visit_date: '2026-11-24' }),
+      rl({ full_name: 'Today', state: 'REMINDER', visit_date: '2026-11-23' }),
+      rl({ full_name: 'Sent', state: 'REMINDER', visit_date: '2026-11-23', last_reminder_at: now.toISOString() }),
+    ];
+    expect([...ls].sort((a, b) => key(a).localeCompare(key(b))).map((l) => l.full_name)).toEqual(['Today', 'Tomorrow', 'Later', 'TBC', 'Sent', 'J']);
   });
   it('opt-out is X', () => expect(resolveCase(rl({ opt_out: true }), NOW).code).toBe('X'));
 });
@@ -193,7 +208,7 @@ describe('render', () => {
   });
   it('NEW_NEEDS_REVIEW blocks', () => {
     const lead = rl({ visit_date: '2026-11-25', visit_date_label: 'Rabu, 25 November 2026' });
-    expect(() => renderTemplate('A-H1', TPL, buildVars(lead, EVENTS, NOW))).toThrow(/belum disetujui/);
+    expect(() => renderTemplate('ASK_IF_BOT', TPL, buildVars(lead, EVENTS, NOW))).toThrow(/belum disetujui/);
   });
   it('validateTemplate', () => {
     expect(validateTemplate(TPL['B2'].body)).toEqual([]);
@@ -234,7 +249,7 @@ describe('precheck', () => {
 
 describe('routing', () => {
   const base: Classification = { intent: 'OTHER', confidence: 0.9, sentiment: 'neutral', answer_in_kb: true, extracted: { visit_date: null, arrival_time: null, session: null, guests: null, pa_preferred_time: null } };
-  const route = (p: Partial<Classification>, lead: Lead = jl({ state: 'REPLIED' })) => routeIntent({ ...base, ...p }, lead);
+  const route = (p: Partial<Classification>, lead: Lead = jl({ state: 'REMINDER' })) => routeIntent({ ...base, ...p }, lead);
 
   it('confirm with complete data -> KONF-B + data suggestion', () => {
     const r = route({ intent: 'CONFIRM_ATTEND', extracted: { ...base.extracted, session: 'S2', guests: 2 } });
@@ -242,7 +257,7 @@ describe('routing', () => {
     expect(r.suggestion).toEqual({ session: 'S2', guests: 2 });
   });
   it('roadshow confirm with date -> KONF-A', () => {
-    const r = route({ intent: 'CONFIRM_ATTEND', extracted: { ...base.extracted, visit_date: '2026-11-25' } }, rl({ state: 'REPLIED' }));
+    const r = route({ intent: 'CONFIRM_ATTEND', extracted: { ...base.extracted, visit_date: '2026-11-25' } }, rl({ state: 'REMINDER' }));
     expect(r.draft).toEqual({ kind: 'TEMPLATE', code: 'KONF-A' });
   });
   it('confirm incomplete -> LLM ask, data still suggested', () => {
@@ -253,8 +268,8 @@ describe('routing', () => {
   it('low confidence complete -> LLM, not KONF', () => expect(route({ intent: 'CONFIRM_ATTEND', confidence: 0.6, extracted: { ...base.extracted, session: 'S1', guests: 1 } }).draft.kind).toBe('LLM'));
   it.each([
     ['ASK_PRODUCT', 'HANDOFF_PA', { needs_pa: true }], ['REQUEST_CALL', 'CALL_REQUEST', { needs_pa: true }],
-    ['OPT_OUT', 'OPT_OUT', { state: 'OPTED_OUT', opt_out: true }], ['SOURCE_QUESTION', 'SOURCE', { needs_attention: true }],
-    ['DECLINE', 'DECLINE', { state: 'DECLINED' }],
+    ['OPT_OUT', 'OPT_OUT', { opt_out: true }], ['SOURCE_QUESTION', 'SOURCE', { needs_attention: true }],
+    ['DECLINE', 'DECLINE', { opt_out: true }],
   ] as const)('%s -> %s', (intent, code, sug) => {
     const r = route({ intent, confidence: 0.3 });
     expect(r.draft).toEqual({ kind: 'FIXED', code });
@@ -272,8 +287,8 @@ describe('routing', () => {
     expect(r.notes.join()).toMatch(/FAQ/);
   });
   it('request info per event', () => {
-    expect(route({ intent: 'REQUEST_INFO' }, rl({ state: 'REPLIED' })).draft).toEqual({ kind: 'TEMPLATE', code: 'A4', attachPoster: true });
-    expect(route({ intent: 'FORGOT_REGISTRATION' }, rl({ state: 'REPLIED' })).draft).toEqual({ kind: 'TEMPLATE', code: 'A3', attachPoster: true });
+    expect(route({ intent: 'REQUEST_INFO' }, rl({ state: 'REMINDER' })).draft).toEqual({ kind: 'LLM' });
+    expect(route({ intent: 'FORGOT_REGISTRATION' }, rl({ state: 'REMINDER' })).draft).toEqual({ kind: 'LLM' });
     expect(route({ intent: 'REQUEST_INFO' }).draft).toEqual({ kind: 'LLM' });
   });
   it('small talk -> nothing', () => expect(route({ intent: 'SMALL_TALK' }).draft.kind).toBe('NONE'));

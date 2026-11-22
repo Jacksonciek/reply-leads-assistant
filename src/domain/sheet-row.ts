@@ -2,7 +2,7 @@
 // Visible columns are the source of truth (Jackson edits them by hand); system columns hold timestamps/flags.
 import { EVENTS, sessionInfo, type EventCode } from '../../config/events';
 import { deriveCallName, normalizeGender } from './names';
-import { parseGuests, parseRoadshowDate, parseSession, parseSource, mapExcelStatus } from './parse-excel-row';
+import { legacyStatusFlags, parseGuests, parseRoadshowDate, parseSession, parseSource } from './parse-excel-row';
 import { normalizePhone } from './phone';
 import { dateLabel } from './time';
 import { emptyLead, STATE_LABEL, type Lead } from './types';
@@ -15,7 +15,7 @@ export const VISIBLE_COLUMNS: Record<EventCode, string[]> = {
 export const SYSTEM_COLUMNS = [
   'lead_id', 'phone_e164', 'state', 'case_code', 'first_sent_at', 'last_outbound_at', 'last_inbound_at',
   'reminder_count', 'last_template', 'confirmed_at', 'needs_pa', 'pa_preferred_time', 'pa_forwarded', 'opt_out',
-  'needs_attention', 'call_name_ok', 'agent_name', 'created_at', 'updated_at',
+  'needs_attention', 'last_reminder_at', 'no_whatsapp', 'call_name_ok', 'agent_name', 'created_at', 'updated_at',
 ];
 
 export const leadColumns = (ev: EventCode) => [...VISIBLE_COLUMNS[ev], ...SYSTEM_COLUMNS];
@@ -29,6 +29,17 @@ export type RowObj = Record<string, string>;
 const bool = (v: string | undefined) => /^(true|1|ya|yes)$/i.test((v ?? '').trim());
 const str = (v: string | undefined) => (v ?? '').toString();
 const nullable = (v: string | undefined) => (str(v).trim() === '' ? null : str(v).trim());
+
+/**
+ * Status column of a lead row. Only New / Reminder / Done exist; any older label ("Belum chat", "Belum balas",
+ * "Sudah balas", "Terkonfirmasi", "No WhatsApp", ...) belongs to data entered before the switch and moves to Reminder.
+ */
+export function sheetStatus(raw: string | undefined): Lead['state'] {
+  const s = str(raw).trim().toLowerCase();
+  if (s === 'new' || s === '') return 'NEW';
+  if (s === 'done') return 'DONE';
+  return 'REMINDER';
+}
 
 /** Parse a sheet row. `fixes` lists system values that should be written back (missing id, call name...). */
 export function rowToLead(ev: EventCode, r: RowObj): Lead {
@@ -46,25 +57,29 @@ export function rowToLead(ev: EventCode, r: RowObj): Lead {
     gender: normalizeGender(r['Gender']),
     phone_e164: ph.phone,
     phone_invalid: ph.invalid,
-    state: mapExcelStatus(r['Status']),
+    state: sheetStatus(r['Status']),
     bitrix_status: str(r['Status in Bitrix']).trim(),
     case_code: str(r['case_code']),
     first_sent_at: nullable(r['first_sent_at']),
     last_outbound_at: nullable(r['last_outbound_at']),
     last_inbound_at: nullable(r['last_inbound_at']),
     reminder_count: Number(str(r['reminder_count']) || 0) || 0,
+    last_reminder_at: nullable(r['last_reminder_at']),
     last_template: str(r['last_template']),
     confirmed_at: nullable(r['confirmed_at']),
     needs_pa: bool(r['needs_pa']),
     pa_preferred_time: str(r['pa_preferred_time']),
     pa_forwarded: bool(r['pa_forwarded']),
     opt_out: bool(r['opt_out']),
+    no_whatsapp: bool(r['no_whatsapp']),
     needs_attention: bool(r['needs_attention']),
     notes: str(r['Catatan']),
     created_at: str(r['created_at']),
     updated_at: str(r['updated_at']),
   });
-  if (lead.state === 'OPTED_OUT') lead.opt_out = true;
+  const legacy = legacyStatusFlags(r['Status']);
+  if (legacy.opt_out) lead.opt_out = true;
+  if (legacy.no_whatsapp) lead.no_whatsapp = true;
   if (ev === 'ROADSHOW') {
     lead.source = 'Agent';
     lead.email = str(r['Email']).trim();
@@ -128,6 +143,8 @@ export function leadToRow(l: Lead, no?: number): RowObj {
     last_outbound_at: l.last_outbound_at ?? '',
     last_inbound_at: l.last_inbound_at ?? '',
     reminder_count: String(l.reminder_count),
+    last_reminder_at: l.last_reminder_at ?? '',
+    no_whatsapp: b(l.no_whatsapp),
     last_template: l.last_template,
     confirmed_at: l.confirmed_at ?? '',
     needs_pa: b(l.needs_pa),
