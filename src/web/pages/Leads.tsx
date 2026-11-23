@@ -15,7 +15,9 @@ export async function exportXlsx(leads: LeadView[]) {
     const rows = leads.filter((l) => l.event === ev).map((l) => ({
       Name: l.full_name,
       Phone: l.phone_e164,
-      ...(ev === 'ROADSHOW' ? { Date: l.visit_date_label || 'Not decided', 'Arrival time': l.arrival_time } : { Session: sessionInfo(l.session)?.label ?? 'Not decided', Guests: guestsLabel(l) ?? '' }),
+      ...(ev === 'ROADSHOW'
+        ? { Date: l.visit_date_label || 'Not decided', 'Arrival time': l.arrival_time }
+        : { Source: l.source === 'Website' || l.source === 'Meta' ? l.source : '', Session: sessionInfo(l.session)?.label ?? 'Not decided', Guests: guestsLabel(l) ?? '' }),
       Status: STATE_EN[l.state],
       'Needs PA': l.needs_pa ? 'Yes' : '',
       'PA time': l.pa_preferred_time,
