@@ -148,7 +148,7 @@ function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: ()
                   {m.text}
                   <span className={`mt-1 flex items-center justify-end gap-1.5 text-[10.5px] text-ink-3`}>
                     {out ? <>{SOURCE_LABEL[m.source] ?? m.source}{m.template_code && ` · ${m.template_code}`}</> : null}
-                    <span className="tabular-nums">{fmtTime(m.sent_at).split(' ').pop()}</span>{out && <span className="text-sky-500">✓✓</span>}
+                    {out && <span className="text-sky-500">✓✓</span>}
                   </span>
                 </button>
               </div>
@@ -197,7 +197,9 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   const ta = useRef<HTMLTextAreaElement>(null);
 
   // The ready message (first message / reminder) stays visible even when the client wrote last.
-  const mode: 'draft' | 'template' | 'none' = draft ? 'draft' : next.template_code ? 'template' : 'none';
+  // Jesselton reminders come only from the invitation templates in the side panel (JC-INV / JC-FIX).
+  const oldJcReminder = lead.event === 'JESSELTON' && lead.state !== 'NEW';
+  const mode: 'draft' | 'template' | 'none' = draft ? 'draft' : next.template_code && !oldJcReminder ? 'template' : 'none';
   useEffect(() => {
     if (draft) { setText(draft.draft_text); setCode(draft.template_code || undefined); }
     else if (mode === 'template') { setText(next.text ?? ''); setCode(next.template_code ?? undefined); }
@@ -224,7 +226,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   }
   if (mode === 'none' && !text) {
     if (!lastIsIn) {
-      const why = next.error ?? next.case.reason;
+      const why = oldJcReminder ? null : next.error ?? next.case.reason;
       return why ? <p className="pt-4 text-center text-xs text-ink-3">{why}</p> : null;
     }
     return (
