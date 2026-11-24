@@ -249,7 +249,7 @@ const JC_LOKASI_SINGKAT = `*Cambridge Hotel Medan, Emerald 1 (Lantai 25)*`;
 // Not fixed yet (Belum balas / Balas, belum pasti). Message 2 depends on what is known (jc_varian A–D).
 const JC_INV_1 = `Hi {sapaan} {nama} 😊
 
-Sabtu ini, 28 November 2026, kami mengadakan *Private Preview Jesselton Courtyard* di ${JC_LOKASI_SINGKAT}. Saya, Jackson, ingin mengundang {sapaan} secara pribadi.`;
+Sabtu ini, 28 November 2026, kami mengadakan *Private Preview Jesselton Courtyard* di ${JC_LOKASI_SINGKAT}. Sehingga, kami ingin mengingatkan kembali dan mengundang {sapaan} secara pribadi.`;
 
 const JC_INV_2 = `{{#if jc_varian == "A"}}Kalau berkenan hadir, lebih nyaman ikut sesi *jam 11.00 siang* atau *jam 15.00 sore*? Dan kira-kira datang bersama berapa orang?{{/if}}{{#if jc_varian == "B"}}Kami sudah catat {sapaan} untuk *sesi jam {sesi_jam}*. Kira-kira datang bersama berapa orang?{{/if}}{{#if jc_varian == "C"}}Kami sudah catat {sapaan} untuk *{jumlah_label}*. Kalau berkenan hadir, lebih nyaman ikut sesi *jam 11.00 siang* atau *jam 15.00 sore*?{{/if}}{{#if jc_varian == "C3"}}Kami sudah catat {sapaan} untuk *{jumlah_label}*. Boleh tahu jumlah pastinya? Kalau berkenan hadir, lebih nyaman ikut sesi *jam 11.00 siang* atau *jam 15.00 sore*?{{/if}}{{#if jc_varian == "D"}}Kami sudah catat {sapaan} untuk *sesi jam {sesi_jam}* bersama *{jumlah_label}*. Mohon dibalas *"Hadir"* bila jadwalnya masih sesuai ya.{{/if}}{{#if jc_varian == "D3"}}Kami sudah catat {sapaan} untuk *sesi jam {sesi_jam}* bersama *{jumlah_label}*. Boleh tahu jumlah pastinya? Mohon dibalas *"Hadir"* bila jadwalnya masih sesuai ya.{{/if}} Terima kasih {sapaan_pendek}! 🙏🏻`;
 

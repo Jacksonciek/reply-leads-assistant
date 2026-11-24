@@ -333,7 +333,7 @@ describe('Jesselton invitation (JC-INV / JC-FIX)', () => {
   });
 
   it('message 1 has the place; the fixed reminder has session and guests', () => {
-    expect(inv({ wa_status: 'NO_REPLY' })!.parts![0]).toContain('Hi Bapak Andi 😊\n\nSabtu ini, 28 November 2026, kami mengadakan *Private Preview Jesselton Courtyard* di *Cambridge Hotel Medan, Emerald 1 (Lantai 25)*.');
+    expect(inv({ wa_status: 'NO_REPLY' })!.parts![0]).toContain('Hi Bapak Andi 😊\n\nSabtu ini, 28 November 2026, kami mengadakan *Private Preview Jesselton Courtyard* di *Cambridge Hotel Medan, Emerald 1 (Lantai 25)*. Sehingga, kami ingin mengingatkan kembali dan mengundang Bapak secara pribadi.');
     const fix = inv({ wa_status: 'CONFIRMED', session: 'S2', guests: 2, guests_bucket: '' })!.parts!;
     expect(fix[0]).toContain('Kami sudah catat Bapak untuk *sesi jam 15.00 WIB* bersama *2 orang*.');
     expect(fix[1]).toBe('Semoga bisa bertemu Sabtu nanti ya, terima kasih Pak! 🙏🏻');
