@@ -225,7 +225,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
       <div className="flex justify-end pt-2">
         <div className="w-full max-w-[560px] rounded-lg rounded-tr-sm border border-dashed border-emerald-500/60 bg-[#f3fdf1] p-3">
           <span className="chip bg-accent-soft text-accent">{mode === 'draft' ? 'Draft · not sent' : 'Ready to copy'}</span>
-          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-canvas p-3 text-[14.5px] leading-[1.5]">{text}</p>
+          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-ink-2 p-3 text-[14.5px] text-white leading-[1.5]">{text}</p>
           <SendActions phone={lead.phone_e164} text={text} linkFormat={d.link_format} onSent={() => {}} />
         </div>
       </div>
@@ -318,7 +318,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
           </div>
         )}
         {draft?.draft_source === 'NONE' && !text && <p className="px-1 pb-2 text-sm text-ink-2">No reply needed. You can still write one yourself.</p>}
-        <textarea ref={ta} aria-label="Reply text" className="input min-h-28 resize-none border-transparent bg-canvas text-[14.5px] leading-[1.5] focus:bg-surface" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write a reply…" />
+        <textarea ref={ta} aria-label="Reply text" className="input min-h-28 resize-none border-transparent bg-ink-2 text-[14.5px] leading-[1.5] text-white caret-[#d4af37] placeholder:text-white/50 focus:border-[#d4af37]" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write a reply…" />
         {posterCode && (
           <div className="mt-2 rounded-xl bg-gold-soft px-3 py-2 text-xs text-gold">
             Send the poster image first, with this text as its caption. <a className="font-medium underline" href={d.poster} download>Download poster</a>
@@ -359,7 +359,7 @@ function InviteCard({ d, invite, reload }: { d: RoomData; invite: InviteMessage;
           <div key={invite.codes[i]}>
             {i === 1 && <p className="mb-3 rounded-xl bg-gold-soft px-3 py-2 text-[13px] text-gold">🎥 Kirim 1 video di sini, lalu pesan 2</p>}
             <div className="mb-1 flex items-center gap-1.5 px-1"><span className="text-[12.5px] font-medium">Pesan {i + 1}</span><CaseChip code={invite.codes[i]} /></div>
-            <p className="whitespace-pre-wrap rounded-xl bg-canvas p-3 text-[14.5px] leading-[1.5]">{t}</p>
+            <p className="whitespace-pre-wrap rounded-xl bg-ink-2 p-3 text-[14.5px] text-white leading-[1.5]">{t}</p>
             <SendActions phone={d.lead.phone_e164} text={t} proactive linkFormat={d.link_format} onSent={markSent(invite.codes[i])} />
           </div>
         ))}
