@@ -16,7 +16,7 @@ import { dateLabel, wib } from '../domain/time';
 import { emptyLead, type Lead, type LeadState, type Message } from '../domain/types';
 import type { Suggestion } from '../domain/routing';
 import {
-  authRequired, clearSessionCookie, makeSession, passwordMatches, rateLimitLogin, requireAuth, setSessionCookie, verifySession,
+  authRequired, clearSessionCookie, makeSession, passwordMatches, rateLimitLogin, requireAuth, setSessionCookie, userPassword, verifySession, type Role,
 } from './auth';
 import type { Env } from './env';
 import { GenerateError, generateReply } from './services/generate';
@@ -188,16 +188,18 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     const ip = c.req.header('cf-connecting-ip') ?? 'local';
     if (c.env.KV && !(await rateLimitLogin(c.env.KV, ip))) return err(c as C, 429, 'rate_limited', 'Too many attempts. Try again in 15 minutes.');
     const { password } = z.object({ password: z.string().max(200) }).parse(await c.req.json());
-    if (!c.env.SESSION_SECRET || !(await passwordMatches(c.env.SESSION_SECRET, password, c.env.ADMIN_PASSWORD))) {
-      return err(c as C, 401, 'bad_password', 'Password salah');
-    }
-    setSessionCookie(c, await makeSession(c.env.SESSION_SECRET));
-    return c.json({ ok: true });
+    if (!c.env.SESSION_SECRET) return err(c as C, 500, 'no_secret', 'SESSION_SECRET belum diisi');
+    const role: Role | null = (await passwordMatches(c.env.SESSION_SECRET, password, c.env.ADMIN_PASSWORD)) ? 'admin'
+      : (await passwordMatches(c.env.SESSION_SECRET, password, userPassword(c.env))) ? 'user' : null;
+    if (!role) return err(c as C, 401, 'bad_password', 'Password salah');
+    setSessionCookie(c, await makeSession(c.env.SESSION_SECRET, role));
+    return c.json({ ok: true, role });
   });
   app.post('/api/auth/logout', (c) => { clearSessionCookie(c); return c.json({ ok: true }); });
   app.get('/api/auth/me', async (c) => {
-    if (!authRequired(c.env)) return c.json({ authenticated: true, auth_required: false });
-    return c.json({ authenticated: await verifySession(c.env.SESSION_SECRET, getCookie(c, 'sid')), auth_required: true });
+    if (!authRequired(c.env)) return c.json({ authenticated: true, role: 'admin', auth_required: false });
+    const role = await verifySession(c.env.SESSION_SECRET, getCookie(c, 'sid'));
+    return c.json({ authenticated: !!role, role, auth_required: true });
   });
 
   app.use('/api/*', requireAuth);

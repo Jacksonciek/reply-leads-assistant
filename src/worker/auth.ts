@@ -1,4 +1,5 @@
-// Single-account auth: HMAC-signed session cookie (HttpOnly, Secure, SameSite=Strict, 7 days).
+// Two-role auth (admin / user): HMAC-signed session cookie (HttpOnly, Secure, SameSite=Strict, 7 days).
+// The role is part of the signed value, so it cannot be changed by the browser.
 import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Env } from './env';
@@ -19,16 +20,19 @@ export function timingSafeEqual(a: string, b: string): boolean {
 }
 const MAX_AGE = 7 * 86400;
 
-export async function makeSession(secret: string, now = Date.now()): Promise<string> {
+export type Role = 'admin' | 'user';
+
+export async function makeSession(secret: string, role: Role = 'admin', now = Date.now()): Promise<string> {
   const exp = Math.floor(now / 1000) + MAX_AGE;
-  return `${exp}.${await hmacHex(secret, `jackson.${exp}`)}`;
+  return `${role}.${exp}.${await hmacHex(secret, `jackson.${role}.${exp}`)}`;
 }
 
-export async function verifySession(secret: string, value: string | undefined, now = Date.now()): Promise<boolean> {
-  if (!value || !secret) return false;
-  const [exp, sig] = value.split('.');
-  if (!exp || !sig || Number(exp) * 1000 < now) return false;
-  return timingSafeEqual(sig, await hmacHex(secret, `jackson.${exp}`));
+/** Returns the session's role, or null when missing, expired or tampered. */
+export async function verifySession(secret: string, value: string | undefined, now = Date.now()): Promise<Role | null> {
+  if (!value || !secret) return null;
+  const [role, exp, sig] = value.split('.');
+  if ((role !== 'admin' && role !== 'user') || !exp || !sig || Number(exp) * 1000 < now) return null;
+  return timingSafeEqual(sig, await hmacHex(secret, `jackson.${role}.${exp}`)) ? role : null;
 }
 
 export async function passwordMatches(secret: string, input: string, expected: string): Promise<boolean> {
@@ -44,14 +48,19 @@ export function clearSessionCookie(c: Context) { deleteCookie(c, COOKIE, { path:
 
 export const authRequired = (env: Env) => env.REQUIRE_PASSWORD === 'true';
 
-/** Read-only pages (/user) may call these without signing in: the dashboard, the lead list and one lead's chat. */
+/** The user role may only read: the dashboard, the lead list and one lead's chat. */
 const VIEWER_GET = /^\/api\/(dashboard|leads|leads\/[A-Za-z0-9]+)$/;
 export const isViewerRequest = (method: string, path: string) => method === 'GET' && VIEWER_GET.test(path);
 
+/** Password for the user role. Set USER_PASSWORD to change it. */
+export const userPassword = (env: Env) => env.USER_PASSWORD || 'user1234';
+
 export const requireAuth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
-  if (isViewerRequest(c.req.method, c.req.path)) return next();
-  if (authRequired(c.env) && !(await verifySession(c.env.SESSION_SECRET, getCookie(c, COOKIE)))) {
-    return c.json({ error: { code: 'unauthorized', message: 'Please sign in first' } }, 401);
+  if (!authRequired(c.env)) return next();
+  const role = await verifySession(c.env.SESSION_SECRET, getCookie(c, COOKIE));
+  if (!role) return c.json({ error: { code: 'unauthorized', message: 'Please sign in first' } }, 401);
+  if (role === 'user' && !isViewerRequest(c.req.method, c.req.path)) {
+    return c.json({ error: { code: 'forbidden', message: 'Hanya admin yang boleh melakukan ini' } }, 403);
   }
   await next();
 };

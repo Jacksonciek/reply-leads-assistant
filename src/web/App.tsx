@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { Link, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { api } from './api';
 import { Loading, ToastProvider, ViewCtx } from './shared';
 import { HomePage } from './pages/Home';
@@ -15,14 +15,16 @@ export interface AppConfig { config: Record<string, string>; env: { GEMINI_MODEL
 const ConfigCtx = createContext<{ cfg: AppConfig | null; reload: () => void }>({ cfg: null, reload: () => {} });
 export const useConfig = () => useContext(ConfigCtx);
 
-function Login({ onDone }: { onDone: () => void }) {
+type Role = 'admin' | 'user';
+
+function Login({ onDone }: { onDone: (role: Role) => void }) {
   const [pw, setPw] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr('');
-    try { await api('/api/auth/login', { body: { password: pw } }); onDone(); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+    try { const r = await api<{ role: Role }>('/api/auth/login', { body: { password: pw } }); onDone(r.role); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
@@ -55,7 +57,6 @@ function MorePage({ authRequired }: { authRequired: boolean }) {
     ['/settings', 'Adjustments', 'AI model, event names, link format'], ['/import', 'Import Excel', 'Add or update leads from the Bitrix24 file'],
     ['/knowledge', 'Knowledge', 'Answers the AI is allowed to use'],
   ];
-  const nav = useNavigate();
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <h1 className="text-[26px] font-semibold">Settings</h1>
@@ -67,15 +68,17 @@ function MorePage({ authRequired }: { authRequired: boolean }) {
           </Link>
         ))}
       </div>
-      {authRequired && <button className="btn-ghost w-full" onClick={async () => { await api('/api/auth/logout', { body: {} }); nav('/'); window.location.reload(); }}>Sign out</button>}
+      {authRequired && <button className="btn-ghost w-full" onClick={signOut}>Sign out</button>}
     </div>
   );
 }
 
 const isWorkspace = (p: string) => p.startsWith('/room/');
 
-/** /user: no password, view and copy only (dashboard, leads, chats). No templates, settings or editing. */
-function ViewerApp() {
+const signOut = async () => { await api('/api/auth/logout', { body: {} }); window.location.href = '/'; };
+
+/** /user: the user role. View, search and copy only (dashboard, leads, chats). No templates, settings or editing. */
+function ViewerApp({ canSignOut }: { canSignOut: boolean }) {
   const loc = useLocation();
   const ws = loc.pathname.startsWith('/user/room/');
   const nav = [{ to: '/user', label: 'Dashboard' }, { to: '/user/leads', label: 'Leads' }];
@@ -92,6 +95,7 @@ function ViewerApp() {
               </div></nav>
               <span className="flex-1" />
               <span className="chip bg-black/[0.05] text-ink-3">View only</span>
+              {canSignOut && <button className="btn-ghost h-9 min-h-9" onClick={signOut}>Sign out</button>}
             </div>
           </header>
           {ws ? (
@@ -113,30 +117,35 @@ function ViewerApp() {
 
 export function App() {
   const loc = useLocation();
-  return loc.pathname === '/user' || loc.pathname.startsWith('/user/') ? <ViewerApp /> : <AdminApp />;
-}
-
-function AdminApp() {
-  const [auth, setAuth] = useState<boolean | null>(null);
+  const [role, setRole] = useState<Role | null | undefined>(undefined);
   const [authRequired, setAuthRequired] = useState(true);
-  const [cfg, setCfg] = useState<AppConfig | null>(null);
-  const loc = useLocation();
-
-  const reload = useCallback(() => { api<AppConfig>('/api/config').then(setCfg).catch(() => {}); }, []);
   useEffect(() => {
-    api<{ authenticated: boolean; auth_required?: boolean }>('/api/auth/me')
-      .then((r) => { setAuthRequired(r.auth_required !== false); setAuth(r.authenticated); })
-      .catch(() => setAuth(false));
+    api<{ authenticated: boolean; role?: Role | null; auth_required?: boolean }>('/api/auth/me')
+      .then((r) => { setAuthRequired(r.auth_required !== false); setRole(r.authenticated ? (r.role ?? 'admin') : null); })
+      .catch(() => setRole(null));
   }, []);
-  useEffect(() => { if (auth) reload(); }, [auth, reload]);
   useEffect(() => {
-    const h = () => setAuth(false);
+    const h = () => setRole(null);
     window.addEventListener('unauthorized', h);
     return () => window.removeEventListener('unauthorized', h);
   }, []);
 
-  if (auth === null) return <div className="mx-auto max-w-3xl p-6"><Loading /></div>;
-  if (!auth) return <Login onDone={() => setAuth(true)} />;
+  if (role === undefined) return <div className="mx-auto max-w-3xl p-6"><Loading /></div>;
+  if (!role) return <Login onDone={setRole} />;
+  const inUser = loc.pathname === '/user' || loc.pathname.startsWith('/user/');
+  if (role === 'user') {
+    if (!inUser) return <Navigate to={loc.pathname.startsWith('/room/') ? `/user${loc.pathname}` : '/user'} replace />;
+    return <ViewerApp canSignOut={authRequired} />;
+  }
+  return inUser ? <ViewerApp canSignOut={authRequired} /> : <AdminApp authRequired={authRequired} />;
+}
+
+function AdminApp({ authRequired }: { authRequired: boolean }) {
+  const [cfg, setCfg] = useState<AppConfig | null>(null);
+  const loc = useLocation();
+
+  const reload = useCallback(() => { api<AppConfig>('/api/config').then(setCfg).catch(() => {}); }, []);
+  useEffect(() => { reload(); }, [reload]);
 
   const ws = isWorkspace(loc.pathname);
   const inRoom = loc.pathname.startsWith('/room/');

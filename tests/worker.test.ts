@@ -47,15 +47,29 @@ describe('auth', () => {
     expect((await t.req('GET', '/api/config')).status).toBe(200);
     expect((await t.req('GET', '/api/auth/me')).json.authenticated).toBe(true);
   });
-  it('viewer (no session) can only read dashboard, leads and one chat', async () => {
+  it('no session cannot read anything', async () => {
     const t = setup();
+    for (const p of ['/api/dashboard', '/api/leads', '/api/leads/ABC123']) expect((await t.req('GET', p)).status, p).toBe(401);
+  });
+  it('user role can only read dashboard, leads and one chat', async () => {
+    const t = setup();
+    const r = await t.req('POST', '/api/auth/login', { password: 'user1234' });
+    expect(r.status).toBe(200);
+    expect(r.json.role).toBe('user');
+    expect((await t.req('GET', '/api/auth/me')).json.role).toBe('user');
     expect((await t.req('GET', '/api/dashboard')).status).toBe(200);
     expect((await t.req('GET', '/api/leads')).status).toBe(200);
     expect((await t.req('GET', '/api/leads/ABC123')).status).toBe(404); // allowed, just not found
     for (const [m, p] of [['POST', '/api/leads'], ['PATCH', '/api/leads/ABC123'], ['POST', '/api/leads/ABC123/mark-sent'], ['POST', '/api/leads/ABC123/generate'],
-      ['PUT', '/api/leads/ABC123/whatsapp'], ['GET', '/api/config'], ['GET', '/api/templates'], ['GET', '/api/faq'], ['GET', '/api/leads/ABC123/render/B6'], ['POST', '/api/import/commit']] as const) {
-      expect((await t.req(m, p, m === 'GET' ? undefined : {})).status, `${m} ${p}`).toBe(401);
+      ['PUT', '/api/leads/ABC123/whatsapp'], ['GET', '/api/config'], ['PUT', '/api/config'], ['GET', '/api/templates'], ['PUT', '/api/templates'], ['GET', '/api/faq'],
+      ['GET', '/api/leads/ABC123/render/B6'], ['POST', '/api/import/commit']] as const) {
+      expect((await t.req(m, p, m === 'GET' ? undefined : {})).status, `${m} ${p}`).toBe(403);
     }
+  });
+  it('admin login returns admin role', async () => {
+    const t = setup();
+    expect((await t.login()).json.role).toBe('admin');
+    expect((await t.req('GET', '/api/auth/me')).json.role).toBe('admin');
   });
   it('rate limits 5 attempts per IP', async () => {
     const t = setup();

@@ -2,6 +2,8 @@ export interface Env {
   ASSETS?: Fetcher;
   KV?: KVNamespace;
   ADMIN_PASSWORD: string;
+  /** Password for the view-only user role. Default 'user1234'. */
+  USER_PASSWORD?: string;
   SESSION_SECRET: string;
   /** 'true' = wajib login dengan ADMIN_PASSWORD. Selain itu login dilewati (sementara). */
   REQUIRE_PASSWORD?: string;

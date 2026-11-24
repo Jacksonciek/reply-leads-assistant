@@ -2,6 +2,8 @@
 # REQUIRE_PASSWORD=true -> aktifkan lagi login dengan password
 REQUIRE_PASSWORD=false
 ADMIN_PASSWORD=ganti-password-kuat
+# Password role user (lihat, cari, copy saja). Kosong = user1234
+USER_PASSWORD=ganti-password-kuat
 SESSION_SECRET=isi-string-acak-panjang-minimal-32-karakter
 # STORE=supabase -> database Supabase (disarankan) | sheets -> Google Sheets | memory -> lokal, hilang saat restart
 STORE=supabase
