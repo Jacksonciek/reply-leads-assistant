@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api } from './api';
-import { Loading, ToastProvider } from './shared';
+import { Loading, ToastProvider, ViewCtx } from './shared';
 import { HomePage } from './pages/Home';
 import { LeadsPage, Workspace } from './pages/Leads';
 import { NewLeadPage } from './pages/NewLead';
@@ -74,7 +74,49 @@ function MorePage({ authRequired }: { authRequired: boolean }) {
 
 const isWorkspace = (p: string) => p.startsWith('/room/');
 
+/** /user: no password, view and copy only (dashboard, leads, chats). No templates, settings or editing. */
+function ViewerApp() {
+  const loc = useLocation();
+  const ws = loc.pathname.startsWith('/user/room/');
+  const nav = [{ to: '/user', label: 'Dashboard' }, { to: '/user/leads', label: 'Leads' }];
+  const active = (to: string) => (to === '/user' ? loc.pathname === '/user' : loc.pathname === '/user/leads' || ws);
+  return (
+    <ViewCtx.Provider value={{ readOnly: true, base: '/user' }}>
+      <ToastProvider>
+        <div className={`flex flex-col ${ws ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
+          <header className={`glass sticky top-0 z-30 border-b border-black/[0.06] ${ws ? 'hidden md:block' : ''}`}>
+            <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-4 px-4">
+              <Link to="/user" className="flex items-center gap-2.5"><Mark /><span className="hidden text-[15px] font-semibold tracking-tight sm:inline">Replies</span></Link>
+              <nav className="ml-2"><div className="segmented">
+                {nav.map((n) => <Link key={n.to} to={n.to} className={`seg ${active(n.to) ? 'seg-on' : ''}`}>{n.label}</Link>)}
+              </div></nav>
+              <span className="flex-1" />
+              <span className="chip bg-black/[0.05] text-ink-3">View only</span>
+            </div>
+          </header>
+          {ws ? (
+            <Routes><Route element={<Workspace />}><Route path="/user/room/:id" element={<RoomPage />} /></Route></Routes>
+          ) : (
+            <main key={loc.pathname} className="animate-rise mx-auto w-full max-w-[1200px] flex-1 px-4 pb-12 pt-6">
+              <Routes>
+                <Route path="/user" element={<HomePage />} />
+                <Route path="/user/leads" element={<LeadsPage />} />
+                <Route path="*" element={<p className="text-sm">Page not found. <Link className="text-accent" to="/user">Go back</Link></p>} />
+              </Routes>
+            </main>
+          )}
+        </div>
+      </ToastProvider>
+    </ViewCtx.Provider>
+  );
+}
+
 export function App() {
+  const loc = useLocation();
+  return loc.pathname === '/user' || loc.pathname.startsWith('/user/') ? <ViewerApp /> : <AdminApp />;
+}
+
+function AdminApp() {
   const [auth, setAuth] = useState<boolean | null>(null);
   const [authRequired, setAuthRequired] = useState(true);
   const [cfg, setCfg] = useState<AppConfig | null>(null);

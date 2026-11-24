@@ -4,7 +4,7 @@ import type { EventCode } from '../../../config/events';
 import type { Dashboard, LeadView } from '../../domain/dashboard';
 import { WA_STATUS_LABEL, type WaStatus } from '../../domain/types';
 import { api } from '../api';
-import { ErrorBox, EventDot, EVENT_LABEL, Loading } from '../shared';
+import { ErrorBox, EventDot, EVENT_LABEL, Loading, useView } from '../shared';
 
 /** The four numbers per event. */
 const METRICS: { status: Exclude<WaStatus, ''>; dot: string }[] = [
@@ -18,6 +18,7 @@ export function HomePage() {
   const [data, setData] = useState<{ leads: LeadView[]; dashboard: Dashboard } | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const { base } = useView();
   const load = () => { setErr(''); setBusy(true); api('/api/dashboard').then(setData).catch((e) => setErr(e.message)).finally(() => setBusy(false)); };
   useEffect(load, []);
   if (err) return <ErrorBox error={err} onRetry={load} />;
@@ -42,11 +43,11 @@ export function HomePage() {
               <div className="flex items-center gap-2">
                 <EventDot event={ev} />
                 <h2 className="text-[17px] font-semibold">{EVENT_LABEL[ev]}</h2>
-                <Link to={`/leads?ev=${ev}`} className="ml-auto text-xs text-ink-3 hover:text-ink">{s.total} leads ›</Link>
+                <Link to={`${base}/leads?ev=${ev}`} className="ml-auto text-xs text-ink-3 hover:text-ink">{s.total} leads ›</Link>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {METRICS.map((m) => (
-                  <Link key={m.status} to={`/leads?ev=${ev}&s=${m.status}`} className="rounded-xl bg-white/80 p-3 transition-transform hover:-translate-y-0.5">
+                  <Link key={m.status} to={`${base}/leads?ev=${ev}&s=${m.status}`} className="rounded-xl bg-white/80 p-3 transition-transform hover:-translate-y-0.5">
                     <div className="flex items-center gap-1.5 text-xs text-ink-3"><span className={`h-2 w-2 rounded-full ${m.dot}`} />{WA_STATUS_LABEL[m.status]}</div>
                     <div className="mt-1 text-[30px] font-semibold tabular-nums leading-none tracking-[-0.02em]">{s.wa[m.status] ?? 0}</div>
                   </Link>

@@ -41,11 +41,21 @@ function setup(llmOut?: Partial<LlmOutput>, now: Date = NOW) {
 describe('auth', () => {
   it('rejects without session, wrong password, then accepts', async () => {
     const t = setup();
-    expect((await t.req('GET', '/api/leads')).status).toBe(401);
+    expect((await t.req('GET', '/api/config')).status).toBe(401);
     expect((await t.req('POST', '/api/auth/login', { password: 'salah' })).status).toBe(401);
     expect((await t.login()).status).toBe(200);
-    expect((await t.req('GET', '/api/leads')).status).toBe(200);
+    expect((await t.req('GET', '/api/config')).status).toBe(200);
     expect((await t.req('GET', '/api/auth/me')).json.authenticated).toBe(true);
+  });
+  it('viewer (no session) can only read dashboard, leads and one chat', async () => {
+    const t = setup();
+    expect((await t.req('GET', '/api/dashboard')).status).toBe(200);
+    expect((await t.req('GET', '/api/leads')).status).toBe(200);
+    expect((await t.req('GET', '/api/leads/ABC123')).status).toBe(404); // allowed, just not found
+    for (const [m, p] of [['POST', '/api/leads'], ['PATCH', '/api/leads/ABC123'], ['POST', '/api/leads/ABC123/mark-sent'], ['POST', '/api/leads/ABC123/generate'],
+      ['PUT', '/api/leads/ABC123/whatsapp'], ['GET', '/api/config'], ['GET', '/api/templates'], ['GET', '/api/faq'], ['GET', '/api/leads/ABC123/render/B6'], ['POST', '/api/import/commit']] as const) {
+      expect((await t.req(m, p, m === 'GET' ? undefined : {})).status, `${m} ${p}`).toBe(401);
+    }
   });
   it('rate limits 5 attempts per IP', async () => {
     const t = setup();

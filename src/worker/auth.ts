@@ -44,7 +44,12 @@ export function clearSessionCookie(c: Context) { deleteCookie(c, COOKIE, { path:
 
 export const authRequired = (env: Env) => env.REQUIRE_PASSWORD === 'true';
 
+/** Read-only pages (/user) may call these without signing in: the dashboard, the lead list and one lead's chat. */
+const VIEWER_GET = /^\/api\/(dashboard|leads|leads\/[A-Za-z0-9]+)$/;
+export const isViewerRequest = (method: string, path: string) => method === 'GET' && VIEWER_GET.test(path);
+
 export const requireAuth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
+  if (isViewerRequest(c.req.method, c.req.path)) return next();
   if (authRequired(c.env) && !(await verifySession(c.env.SESSION_SECRET, getCookie(c, COOKIE)))) {
     return c.json({ error: { code: 'unauthorized', message: 'Please sign in first' } }, 401);
   }

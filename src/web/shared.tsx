@@ -108,6 +108,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// ---------- read-only (/user) mode ----------
+/** readOnly: the /user pages (view and copy only). base: prefix for in-app links ('' or '/user'). */
+export const ViewCtx = createContext<{ readOnly: boolean; base: string }>({ readOnly: false, base: '' });
+export const useView = () => useContext(ViewCtx);
+
 // ---------- send actions ----------
 export async function copyText(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; } catch {
@@ -130,6 +135,7 @@ interface SendProps {
 
 export function SendActions({ phone, text, proactive, linkFormat, disabled, onSent, compact }: SendProps) {
   const toast = useToast();
+  const { readOnly } = useView();
   const [ask, setAsk] = useState<string | null>(null);
   const pending = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -162,6 +168,14 @@ export function SendActions({ phone, text, proactive, linkFormat, disabled, onSe
     setBusy(true);
     try { await onSent(final); setAsk(null); } catch (e) { toast((e as Error).message, 'err'); } finally { setBusy(false); }
   };
+
+  if (readOnly) {
+    return (
+      <div className={`flex flex-wrap gap-2 ${compact ? '' : 'mt-3'}`}>
+        <button className="btn-ghost" disabled={disabled} onClick={async () => toast(await copyText(refreshSalam(text)) ? 'Copied' : 'Could not copy', 'ok')}>Copy</button>
+      </div>
+    );
+  }
 
   return (
     <>

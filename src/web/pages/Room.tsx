@@ -13,7 +13,7 @@ import { guestsLabel, WA_STATUS_LABEL, type Draft, type LeadState, type Message 
 import { useConfig } from '../App';
 import { api } from '../api';
 import {
-  Avatar, CaseChip, copyText, INTENT_EN, STATE_EN, ErrorBox, EventChip, fmtTime, Loading, Modal, SendActions, StateChip, useToast, WaChip, Warnings,
+  Avatar, CaseChip, copyText, INTENT_EN, STATE_EN, ErrorBox, EventChip, fmtTime, Loading, Modal, SendActions, StateChip, useToast, useView, WaChip, Warnings,
 } from '../shared';
 import type { WorkspaceCtx } from './Leads';
 
@@ -34,6 +34,7 @@ const INSTRUCTION_HINTS = ['Shorter', 'More formal', 'More casual', 'Less salesy
 type Patch = (b: Record<string, unknown>, m?: string) => Promise<void>;
 
 export function RoomPage() {
+  const { base, readOnly } = useView();
   const { id } = useParams();
   const { refreshList } = useOutletContext<WorkspaceCtx>();
   const [sp, setSp] = useSearchParams();
@@ -71,7 +72,7 @@ export function RoomPage() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="glass z-20 flex h-14 shrink-0 items-center gap-3 border-b border-black/[0.06] px-3 md:static">
-        <Link to="/leads" className="btn-quiet -ml-1 h-9 min-h-9 px-2 md:hidden" aria-label="Back to leads">‹ Leads</Link>
+        <Link to={`${base}/leads`} className="btn-quiet -ml-1 h-9 min-h-9 px-2 md:hidden" aria-label="Back to leads">‹ Leads</Link>
         <Avatar name={lead.call_name || lead.full_name} event={lead.event} size={34} />
         <div className="min-w-0 flex-1 leading-tight">
           <div className="truncate text-[15px] font-semibold">{lead.gender || 'Bapak/Ibu'} {lead.call_name || lead.full_name}</div>
@@ -85,7 +86,7 @@ export function RoomPage() {
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <Timeline d={d} reload={reload} generate={generate} generating={generating} />
-          <Composer d={d} reload={reload} generate={generate} generating={generating} />
+          {!readOnly && <Composer d={d} reload={reload} generate={generate} generating={generating} />}
         </div>
         {details && <div className="animate-fade fixed inset-0 z-30 bg-black/20 xl:hidden" onClick={() => setDetails(false)} />}
         <aside className={`${details ? 'animate-sheet fixed inset-y-0 right-0 z-40 flex w-[min(360px,92vw)] shadow-[0_0_40px_rgba(0,0,0,0.15)]' : 'hidden'} flex-col overflow-y-auto border-l border-line bg-surface xl:static xl:z-auto xl:flex xl:w-[320px] xl:shadow-none`}>
@@ -113,6 +114,7 @@ function dayLabel(iso: string) {
 
 function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void>; generating: boolean }) {
   const toast = useToast();
+  const { readOnly } = useView();
   const [editing, setEditing] = useState<Message | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const key = `${d.messages.length}:${d.draft?.draft_id ?? ''}:${generating}`;
@@ -143,7 +145,7 @@ function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: ()
               {waStart && <p className="py-2 text-center text-[11.5px] text-ink-3">— Mulai dari sini sama dengan WhatsApp —</p>}
               {showDay &&<div className="py-3 text-center"><span className="eyebrow rounded-lg bg-white px-2.5 py-1 normal-case tracking-normal shadow-sm">{day}</span></div>}
               <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
-                <button onClick={() => setEditing(m)} title="Edit or delete message"
+                <button onClick={() => !readOnly && setEditing(m)} title={readOnly ? undefined : "Edit or delete message"}
                   className={`group max-w-[82%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-left text-[14.5px] leading-[1.45] transition-transform duration-100 active:scale-[0.99] ${out ? 'rounded-tr-sm bg-[#d9fdd3]' : 'rounded-tl-sm bg-white'} shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]`}>
                   {m.text}
                   <span className={`mt-1 flex items-center justify-end gap-1.5 text-[10.5px] text-ink-3`}>
@@ -190,6 +192,7 @@ function EditMessage({ m, onClose, onDone }: { m: Message; onClose: () => void; 
 function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: () => Promise<void>; generate: (i?: string) => Promise<void>; generating: boolean }) {
   const { lead, next, draft } = d;
   const toast = useToast();
+  const { readOnly } = useView();
   const lastIsIn = lead.room.last_dir === 'IN';
   const [text, setText] = useState('');
   const [code, setCode] = useState<string | undefined>();
@@ -214,6 +217,20 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
     return () => window.removeEventListener('room:insert', h);
   }, []);
 
+  // View-only: the ready message (reminder / invitation / pending draft) can be read and copied, nothing else.
+  if (readOnly) {
+    if (mode === 'none' && oldJcReminder && d.invite) return <InviteCard d={d} invite={d.invite} reload={reload} />;
+    if (!text) return null;
+    return (
+      <div className="flex justify-end pt-2">
+        <div className="w-full max-w-[560px] rounded-lg rounded-tr-sm border border-dashed border-emerald-500/60 bg-[#f3fdf1] p-3">
+          <span className="chip bg-accent-soft text-accent">{mode === 'draft' ? 'Draft · not sent' : 'Ready to copy'}</span>
+          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-canvas p-3 text-[14.5px] leading-[1.5]">{text}</p>
+          <SendActions phone={lead.phone_e164} text={text} linkFormat={d.link_format} onSent={() => {}} />
+        </div>
+      </div>
+    );
+  }
   if (generating) {
     return (
       <div className="flex justify-end pt-2" aria-live="polite">
@@ -483,6 +500,7 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
 function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
   const { lead } = d;
   const toast = useToast();
+  const { readOnly } = useView();
   const [edit, setEdit] = useState(false);
   const [editInfo, setEditInfo] = useState(false);
   const [callName, setCallName] = useState(lead.call_name);
@@ -497,7 +515,7 @@ function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
           {lead.needs_pa && !lead.pa_forwarded && <span className="chip bg-gold-soft text-gold">Needs PA</span>}
         </div>
       </div>
-      {lead.call_name_needs_review && (
+      {lead.call_name_needs_review && !readOnly && (
         <div className="mb-2 space-y-2 rounded-xl bg-amber-50 p-3 text-sm">
           <p className="text-amber-900">Please check the greeting name</p>
           <div className="flex gap-2">
@@ -506,7 +524,7 @@ function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
           </div>
         </div>
       )}
-      {editInfo ? <InfoEdit lead={lead} onSave={async (b) => { await patch(b, 'Info saved'); setEditInfo(false); }} onCancel={() => setEditInfo(false)} /> : (
+      {editInfo ? <InfoEdit lead={lead} onSave={async (b) => { await patch(b, 'Info saved'); setEditInfo(false); }} onCancel={() => setEditInfo(false)} /> : !readOnly && (
         <div className="mb-1 flex justify-end"><button className="text-[13px] text-accent" onClick={() => setEditInfo(true)}>Edit info</button></div>
       )}
       <div className="divide-y divide-line">
@@ -522,7 +540,7 @@ function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
               <span className="flex-1">{lead.event === 'ROADSHOW'
                 ? <>{lead.visit_date_label || 'Not decided'}{lead.arrival_time && ` · ${lead.arrival_time.replace(':', '.')} WIB`}</>
                 : <>{sessionInfo(lead.session)?.label ?? (lead.info_only ? 'Info only' : 'Not decided')} · {guestsLabel(lead) ?? 'guests ?'}</>}</span>
-              <button className="text-[13px] text-accent" onClick={() => setEdit(true)}>Edit</button>
+              {!readOnly && <button className="text-[13px] text-accent" onClick={() => setEdit(true)}>Edit</button>}
             </span>
           )}
         </Row>
@@ -627,6 +645,23 @@ function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
   useEffect(() => setNotes(lead.notes), [lead.notes]);
   useEffect(() => setNextStep(lead.next_step), [lead.next_step]);
   useEffect(() => setReminder(withSalam(lead.reminder_text)), [lead.reminder_text]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { readOnly } = useView();
+  if (readOnly) {
+    return (
+      <section className="space-y-4 p-4">
+        <div><div className="eyebrow mb-2">WhatsApp status</div>{lead.wa_status ? <WaChip status={lead.wa_status} /> : <span className="text-sm text-ink-3">Not checked</span>}</div>
+        {lead.next_step && <div><div className="eyebrow mb-1">Next step</div><p className="text-[13.5px]">{lead.next_step}</p></div>}
+        {!d.invite && reminder.trim() && (
+          <div>
+            <div className="eyebrow mb-1">Reminder</div>
+            <p className="whitespace-pre-wrap rounded-xl bg-canvas p-2.5 text-[13.5px]">{reminder}</p>
+            <button className="btn-ghost mt-2 h-9 min-h-9 text-[13px]" onClick={async () => { await copyText(reminder); toast('Reminder copied'); }}>Copy</button>
+          </div>
+        )}
+        {lead.notes && <div><div className="eyebrow mb-1">Notes</div><p className="whitespace-pre-wrap text-[13.5px]">{lead.notes}</p></div>}
+      </section>
+    );
+  }
   return (
     <section className="space-y-4 p-4">
       <div className={`-mx-1 rounded-xl p-1 ${lead.wa_status === 'CONFIRMED' ? 'bg-emerald-50' : lead.wa_status === 'BAD_LEAD' ? 'bg-red-50' : ''}`}>

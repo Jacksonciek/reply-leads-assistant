@@ -6,7 +6,7 @@ import type { LeadView } from '../../domain/dashboard';
 import { EXCEL_COLUMNS, leadToExcelRow } from '../../domain/sheet-row';
 import { guestsLabel, WA_STATUS_LABEL, type LeadState } from '../../domain/types';
 import { api } from '../api';
-import { Avatar, ErrorBox, EventChip, EventDot, Loading, STATE_EN, WA_TONE, WaChip } from '../shared';
+import { Avatar, ErrorBox, EventChip, EventDot, Loading, STATE_EN, useView, WA_TONE, WaChip } from '../shared';
 
 /** Same sheets and columns as the Bitrix24 Excel file, rows in the file's "No" order; new leads come last. */
 export async function exportXlsx(leads: LeadView[]) {
@@ -96,11 +96,12 @@ function StatusFilter({ state, setState, className = '' }: { state: string; setS
 }
 
 function Empty({ any }: { any: boolean }) {
+  const { readOnly } = useView();
   return (
     <div className="px-6 py-16 text-center">
       <p className="text-[15px] font-medium">{any ? 'No matches' : 'No leads yet'}</p>
       <p className="mt-1 text-sm text-ink-3">{any ? 'Try another search or filter.' : 'Add your first lead from Bitrix24.'}</p>
-      {!any && <Link to="/leads/new" className="btn-primary mt-4">New lead</Link>}
+      {!any && !readOnly && <Link to="/leads/new" className="btn-primary mt-4">New lead</Link>}
     </div>
   );
 }
@@ -109,6 +110,7 @@ function Empty({ any }: { any: boolean }) {
 export function LeadsPage() {
   const f = useLeads();
   const nav = useNavigate();
+  const { base, readOnly } = useView();
   const waiting = (f.leads ?? []).filter((l) => l.room.last_dir === 'IN').length;
   return (
     <div className="space-y-5">
@@ -117,7 +119,7 @@ export function LeadsPage() {
           <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em]">Leads</h1>
           <p className="text-sm text-ink-3">{f.leads ? `${f.leads.length} clients · ${waiting} waiting for your reply` : 'Loading…'}</p>
         </div>
-        {f.leads && f.leads.length > 0 && <button className="btn-ghost" onClick={() => exportXlsx(f.leads!)}>Export .xlsx</button>}
+        {f.leads && f.leads.length > 0 && !readOnly && <button className="btn-ghost" onClick={() => exportXlsx(f.leads!)}>Export .xlsx</button>}
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -145,7 +147,7 @@ export function LeadsPage() {
               <tbody>
                 {f.list.map((l, i) => {
                   const w = l.room.last_dir === 'IN';
-                  const go = () => nav(`/room/${l.lead_id}`);
+                  const go = () => nav(`${base}/room/${l.lead_id}`);
                   return (
                     <Fragment key={l.lead_id}>
                     {groupStart(f.list, i) && (
@@ -154,7 +156,7 @@ export function LeadsPage() {
                     <tr onClick={go} className={`cursor-pointer border-b border-line transition-colors last:border-0 hover:bg-canvas ${l.wa_status ? WA_TONE[l.wa_status].row : ''}`}>
                       {/* Phone: one rich cell. Tablet and up: real columns. */}
                       <td className="px-4 py-3" colSpan={1}>
-                        <Link to={`/room/${l.lead_id}`} className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        <Link to={`${base}/room/${l.lead_id}`} className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                           <Avatar name={l.call_name || l.full_name} event={l.event} size={36} />
                           <span className="min-w-0 flex-1">
                             <span className="flex items-center gap-2">
@@ -189,13 +191,14 @@ export function LeadsPage() {
 export function Workspace() {
   const { id } = useParams();
   const f = useLeads();
+  const { base } = useView();
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 md:border-x md:border-line">
       <aside className="hidden flex-col bg-surface md:flex md:w-[300px] md:shrink-0 md:border-r md:border-line lg:w-[340px]">
         <div className="space-y-2.5 border-b border-line p-3">
           <div className="flex items-center justify-between px-1">
-            <Link to="/leads" className="text-[17px] font-semibold">Conversations</Link>
-            <Link to="/leads" className="text-[13px] text-accent">All leads</Link>
+            <Link to={`${base}/leads`} className="text-[17px] font-semibold">Conversations</Link>
+            <Link to={`${base}/leads`} className="text-[13px] text-accent">All leads</Link>
           </div>
           <input className="input h-9 min-h-9 bg-canvas" type="search" placeholder="Search name or phone" value={f.q} onChange={(e) => f.setQ(e.target.value)} aria-label="Search clients" />
           <EventTabs ev={f.ev} setEv={f.setEv} count={f.count} loaded={!!f.leads} />
@@ -212,7 +215,7 @@ export function Workspace() {
               return (
                 <li key={l.lead_id}>
                   {groupStart(f.list, i) && <div className="px-4 pb-1 pt-3 text-[11.5px] font-semibold uppercase tracking-wide text-ink-3">{l.event === 'ROADSHOW' ? 'Roadshow' : 'Jesselton'}</div>}
-                  <Link to={`/room/${l.lead_id}`} aria-current={on ? 'page' : undefined}
+                  <Link to={`${base}/room/${l.lead_id}`} aria-current={on ? 'page' : undefined}
                     className={`mx-1.5 flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-100 ${on ? 'bg-accent-soft' : `hover:bg-canvas ${l.wa_status ? WA_TONE[l.wa_status].row : ''}`}`}>
                     <Avatar name={l.call_name || l.full_name} event={l.event} size={40} />
                     <div className="min-w-0 flex-1">
