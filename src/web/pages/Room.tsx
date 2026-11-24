@@ -8,11 +8,12 @@ import type { NextMessage } from '../../domain/next-message';
 import { parseWaPaste, type PastedMessage } from '../../domain/parse-wa-paste';
 import type { AnyIntent } from '../../domain/routing';
 import { DATE_OPTIONS } from '../../domain/sheet-row';
-import { guestsLabel, type Draft, type LeadState, type Message } from '../../domain/types';
+import { getSalam } from '../../domain/time';
+import { guestsLabel, WA_STATUS_LABEL, type Draft, type LeadState, type Message } from '../../domain/types';
 import { useConfig } from '../App';
 import { api } from '../api';
 import {
-  Avatar, CaseChip, copyText, INTENT_EN, STATE_EN, ErrorBox, EventChip, fmtTime, Loading, Modal, SendActions, StateChip, useToast, Warnings,
+  Avatar, CaseChip, copyText, INTENT_EN, STATE_EN, ErrorBox, EventChip, fmtTime, Loading, Modal, SendActions, StateChip, useToast, WaChip, Warnings,
 } from '../shared';
 import type { WorkspaceCtx } from './Leads';
 
@@ -26,7 +27,7 @@ const QUICK: Record<string, string[]> = {
   ROADSHOW: ['A3', 'A4', 'KONF-A', 'HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'A1', 'A2', 'POSTER-A'],
   JESSELTON: ['B6', 'B-R', 'B-H1', 'KONF-B', 'HANDOFF_PA', 'CALL_REQUEST', 'PA_TIME_ACK', 'HOLD', 'SOURCE', 'DECLINE', 'OPT_OUT', 'B4', 'B5', 'POSTER-B'],
 };
-const SOURCE_LABEL: Record<string, string> = { PASTED: 'pasted', TEMPLATE: 'template', LLM_DRAFT: 'AI draft', EDITED_DRAFT: 'edited draft', MANUAL: 'manual' };
+const SOURCE_LABEL: Record<string, string> = { PASTED: 'pasted', TEMPLATE: 'template', LLM_DRAFT: 'AI draft', EDITED_DRAFT: 'edited draft', MANUAL: 'manual', WHATSAPP: '' };
 // Hints are passed to the model as instructions; the reply itself stays in Indonesian.
 const INSTRUCTION_HINTS = ['Shorter', 'More formal', 'More casual', 'Less salesy', 'Only answer the question', 'Invite them to attend in person'];
 
@@ -74,8 +75,9 @@ export function RoomPage() {
         <Avatar name={lead.call_name || lead.full_name} event={lead.event} size={34} />
         <div className="min-w-0 flex-1 leading-tight">
           <div className="truncate text-[15px] font-semibold">{lead.gender || 'Bapak/Ibu'} {lead.call_name || lead.full_name}</div>
-          <div className="truncate text-xs text-ink-3">{lead.event === 'ROADSHOW' ? 'Roadshow' : 'Jesselton'} · {STATE_EN[lead.state as LeadState]}{lead.phone_e164 && ` · +${lead.phone_e164}`}</div>
+          <div className="truncate text-xs text-ink-3">{lead.event === 'ROADSHOW' ? 'Roadshow' : 'Jesselton'}{lead.phone_e164 && ` · +${lead.phone_e164}`}</div>
         </div>
+        <WaChip status={lead.wa_status} />
         {lead.needs_attention && <span className="chip hidden bg-red-50 text-red-700 sm:inline-flex">Needs attention</span>}
         <button className="btn-quiet h-9 min-h-9 px-2.5" title={d.contact_name} onClick={async () => { await copyText(d.contact_name); toast(`Copied: ${d.contact_name}`); }}>Copy WA name</button>
         <button className={`btn-quiet h-9 min-h-9 xl:hidden ${details ? 'bg-black/[0.06] text-ink' : ''}`} onClick={() => setDetails((x) => !x)} aria-expanded={details}>Details</button>
@@ -128,13 +130,18 @@ function Timeline({ d, reload, generate, generating }: { d: RoomData; reload: ()
             </p>
           </div>
         )}
-        {d.messages.map((m) => {
+        {d.messages.map((m, i) => {
           const day = dayLabel(m.sent_at);
           const showDay = day !== lastDay; lastDay = day;
           const out = m.direction === 'OUT';
+          // App messages from before the WhatsApp copy starts are no longer in WhatsApp (disappearing messages).
+          const waStart = m.source === 'WHATSAPP' && i > 0 && d.messages[i - 1].source !== 'WHATSAPP';
+          const archiveStart = i === 0 && m.source !== 'WHATSAPP' && d.messages.some((x) => x.source === 'WHATSAPP');
           return (
             <div key={m.msg_id}>
-              {showDay && <div className="py-3 text-center"><span className="eyebrow rounded-lg bg-white px-2.5 py-1 normal-case tracking-normal shadow-sm">{day}</span></div>}
+              {archiveStart && <p className="pb-1 text-center text-[11.5px] text-ink-3">Arsip: pesan lama yang sudah tidak ada di WhatsApp</p>}
+              {waStart && <p className="py-2 text-center text-[11.5px] text-ink-3">— Mulai dari sini sama dengan WhatsApp —</p>}
+              {showDay &&<div className="py-3 text-center"><span className="eyebrow rounded-lg bg-white px-2.5 py-1 normal-case tracking-normal shadow-sm">{day}</span></div>}
               <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
                 <button onClick={() => setEditing(m)} title="Edit or delete message"
                   className={`group max-w-[82%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-left text-[14.5px] leading-[1.45] transition-transform duration-100 active:scale-[0.99] ${out ? 'rounded-tr-sm bg-[#d9fdd3]' : 'rounded-tl-sm bg-white'} shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]`}>
@@ -442,6 +449,7 @@ function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
   const { lead } = d;
   const toast = useToast();
   const [edit, setEdit] = useState(false);
+  const [editInfo, setEditInfo] = useState(false);
   const [callName, setCallName] = useState(lead.call_name);
   useEffect(() => setCallName(lead.call_name), [lead.call_name]);
   return (
@@ -463,8 +471,12 @@ function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
           </div>
         </div>
       )}
+      {editInfo ? <InfoEdit lead={lead} onSave={async (b) => { await patch(b, 'Info saved'); setEditInfo(false); }} onCancel={() => setEditInfo(false)} /> : (
+        <div className="mb-1 flex justify-end"><button className="text-[13px] text-accent" onClick={() => setEditInfo(true)}>Edit info</button></div>
+      )}
       <div className="divide-y divide-line">
         <Row k="Greeting">{lead.gender || 'Bapak/Ibu'} {lead.call_name}</Row>
+        {lead.bitrix_status && <Row k="Bitrix">{lead.bitrix_status}</Row>}
         <Row k="WhatsApp">{lead.phone_e164 ? `+${lead.phone_e164}` : <span className="text-ink-3">None</span>}</Row>
         {lead.email && <Row k="Email">{lead.email}</Row>}
         {lead.agent_name && <Row k="Agent">{lead.agent_name}</Row>}
@@ -488,6 +500,50 @@ function Profile({ d, patch }: { d: RoomData; patch: Patch }) {
         <a className="btn-ghost text-[13px]" href={`https://wa.me/${lead.phone_e164}`} target="_blank" rel="noopener">Open chat</a>
       </div>
     </section>
+  );
+}
+
+function F({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block"><span className="label">{label}</span>{children}</label>;
+}
+
+/** Every column of the Excel file (except Notes, edited below) in one form. */
+function InfoEdit({ lead, onSave, onCancel }: { lead: LeadView; onSave: (b: Record<string, unknown>) => void; onCancel: () => void }) {
+  const [v, setV] = useState({
+    full_name: lead.full_name, gender: lead.gender, phone: lead.phone_e164, email: lead.email, bitrix_status: lead.bitrix_status,
+    source: lead.source, visit_date: lead.visit_date ?? '', session: lead.session, info_only: lead.info_only,
+    guests: lead.guests ? String(lead.guests) : lead.guests_bucket === '3+' ? '3+' : '',
+  });
+  const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setV((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value }));
+  const save = () => onSave({
+    full_name: v.full_name, gender: v.gender, phone: v.phone, bitrix_status: v.bitrix_status,
+    ...(lead.event === 'ROADSHOW'
+      ? { email: v.email, visit_date: v.visit_date || null }
+      : { source: v.source, session: v.session, info_only: v.info_only, guests: v.guests && v.guests !== '3+' ? Number(v.guests) : null,
+        guests_bucket: v.guests === '3+' ? '3+' : v.guests ? '' : 'unknown' }),
+  });
+  return (
+    <div className="mb-3 space-y-2 rounded-xl bg-canvas p-3">
+      <F label="Name"><input className="input" value={v.full_name} onChange={set('full_name')} /></F>
+      <F label="Gender"><select className="input" value={v.gender} onChange={set('gender')}><option value="Bapak">Bapak</option><option value="Ibu">Ibu</option><option value="">—</option></select></F>
+      <F label="Phone number"><input className="input" value={v.phone} onChange={set('phone')} /></F>
+      {lead.event === 'ROADSHOW' ? (
+        <>
+          <F label="Email"><input className="input" value={v.email} onChange={set('email')} /></F>
+          <F label="Date"><select className="input" value={v.visit_date} onChange={set('visit_date')}><option value="">Belum pasti</option>{DATES.map((x, i) => <option key={x} value={x}>{DATE_OPTIONS[i]}</option>)}</select></F>
+        </>
+      ) : (
+        <>
+          <F label="Website / Meta"><select className="input" value={v.source} onChange={set('source')}><option value="Meta">Meta</option><option value="Website">Website</option><option value="">—</option></select></F>
+          <F label="Time"><select className="input" value={v.session} onChange={set('session')}><option value="S1">11:00-13:00</option><option value="S2">15:00-17:00</option><option value="UNDECIDED">Belum pasti, Kirim info saja</option><option value="NONE">None</option></select></F>
+          <F label="Guest (number or 3+)"><input className="input" value={v.guests} onChange={(e) => setV((x) => ({ ...x, guests: e.target.value.replace(/[^0-9+]/g, '') }))} /></F>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="h-4 w-4" checked={v.info_only} onChange={set('info_only')} /> Kirim info saja</label>
+        </>
+      )}
+      <F label="Status in Bitrix"><input className="input" value={v.bitrix_status} onChange={set('bitrix_status')} /></F>
+      <div className="flex gap-2 pt-1"><button className="btn-primary h-9 min-h-9" onClick={save}>Save</button><button className="btn-quiet h-9 min-h-9" onClick={onCancel}>Cancel</button></div>
+    </div>
   );
 }
 
@@ -528,9 +584,32 @@ function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
   const { lead } = d;
   const [notes, setNotes] = useState(lead.notes);
   const [paNote, setPaNote] = useState('');
+  const [nextStep, setNextStep] = useState(lead.next_step);
+  // {salam} in a suggested reminder becomes pagi/siang/sore/malam at the moment it is shown.
+  const withSalam = (t: string) => t.replaceAll('{salam}', getSalam(new Date()));
+  const [reminder, setReminder] = useState(withSalam(lead.reminder_text));
+  const toast = useToast();
   useEffect(() => setNotes(lead.notes), [lead.notes]);
+  useEffect(() => setNextStep(lead.next_step), [lead.next_step]);
+  useEffect(() => setReminder(withSalam(lead.reminder_text)), [lead.reminder_text]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section className="space-y-4 p-4">
+      <div className={`-mx-1 rounded-xl p-1 ${lead.wa_status === 'CONFIRMED' ? 'bg-emerald-50' : lead.wa_status === 'BAD_LEAD' ? 'bg-red-50' : ''}`}>
+        <div className="eyebrow mb-2">WhatsApp status</div>
+        <select className="input" value={lead.wa_status} onChange={(e) => patch({ wa_status: e.target.value }, 'Status changed')} aria-label="WhatsApp status">
+          <option value="">Not checked</option>
+          {Object.entries(WA_STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <div className="eyebrow mb-1 mt-3">Next step</div>
+        <input className="input" value={nextStep} onChange={(e) => setNextStep(e.target.value)} placeholder="e.g. Reminder H-1" />
+        {nextStep !== lead.next_step && <button className="btn-primary mt-2 h-9 min-h-9" onClick={() => patch({ next_step: nextStep }, 'Next step saved')}>Save</button>}
+        <div className="eyebrow mb-1 mt-3">Reminder (copy, send yourself)</div>
+        <textarea className="input min-h-32 text-[13.5px]" value={reminder} onChange={(e) => setReminder(e.target.value)} placeholder="No reminder needed" />
+        <div className="mt-2 flex gap-2">
+          <button className="btn-ghost h-9 min-h-9 text-[13px]" disabled={!reminder.trim()} onClick={async () => { await copyText(reminder); toast('Reminder copied'); }}>Copy</button>
+          {reminder !== withSalam(lead.reminder_text) && <button className="btn-primary h-9 min-h-9" onClick={() => patch({ reminder_text: reminder }, 'Reminder saved')}>Save</button>}
+        </div>
+      </div>
       <div>
         <div className="eyebrow mb-2">Status</div>
         <select className="input" value={lead.state} onChange={(e) => patch({ state: e.target.value }, 'Status changed')} aria-label="Lead status">

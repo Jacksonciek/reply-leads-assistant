@@ -44,3 +44,11 @@
 
 ## Default Bagian 19
 Semua default Bagian 19 dipakai tanpa perubahan dan bisa diubah di halaman Pengaturan atau di sheet `Config`.
+
+## Perubahan 24 Nov 2026 (Dashboard, status WhatsApp, export Excel)
+- Menu: Today → **Dashboard**, Bulk dihapus (halaman + `GET /api/bulk`), **Template** jadi menu utama, More → **Settings** (Adjustments, Import Excel, Knowledge).
+- Kolom sistem baru per lead: `wa_status` (Belum balas / No WhatsApp / Terkonfirmasi / Balas, belum pasti / Tidak bisa hadir / Bad lead), `next_step`, `reminder_text`. Dashboard menghitung 4 status pertama per acara. Terkonfirmasi = hijau, Bad lead = merah.
+- `reminder_text` hanya saran untuk disalin. Website tetap tidak pernah mengirim pesan.
+- Chat WhatsApp dibaca dari WhatsApp Web (oleh Claude lewat Chrome, read-only) dan disimpan lewat `PUT /api/leads/:id/whatsapp`. Pesan aplikasi yang lebih tua dari pesan WhatsApp pertama tetap ada sebagai arsip (pesan WA hilang setelah 7 hari). Nomor yang terdaftar di dua acara memakai chat yang sama di kedua lead.
+- Import (mode update) mengikuti Excel untuk semua kolomnya (Name, Gender, Phone, Email/Website-Meta, Date/Time/Guest, Status in Bitrix, Notes, No). Status aplikasi tidak diubah oleh import.
+- Export memakai sheet dan kolom yang sama persis dengan file Bitrix24 (`EXCEL_COLUMNS`), urut kolom "No"; lead baru di bawah.

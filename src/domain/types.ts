@@ -7,8 +7,21 @@ export type LeadSource = 'Agent' | 'Meta' | 'Website' | '';
 export type Session = 'S1' | 'S2' | 'UNDECIDED' | 'NONE';
 export type GuestsBucket = '' | '3+' | 'unknown';
 
+/** Where the WhatsApp conversation stands (set from reading the chat). '' = not checked yet. */
+export type WaStatus = '' | 'NO_REPLY' | 'NO_WA' | 'CONFIRMED' | 'UNSURE' | 'CANNOT_ATTEND' | 'BAD_LEAD';
+export const WA_STATUS_LABEL: Record<Exclude<WaStatus, ''>, string> = {
+  NO_REPLY: 'Belum balas',
+  NO_WA: 'No WhatsApp',
+  CONFIRMED: 'Terkonfirmasi',
+  UNSURE: 'Balas, belum pasti',
+  CANNOT_ATTEND: 'Tidak bisa hadir',
+  BAD_LEAD: 'Bad lead',
+};
+
 export interface Lead {
   lead_id: string;
+  /** "No" column: row order of the Excel file (0 = not set). */
+  no: number;
   event: EventCode;
   full_name: string;
   call_name: string;
@@ -46,12 +59,17 @@ export interface Lead {
   no_whatsapp: boolean;
   needs_attention: boolean;
   notes: string;
+  wa_status: WaStatus;
+  /** What to do next with this lead (short). */
+  next_step: string;
+  /** Suggested reminder text. Never sent by the app. */
+  reminder_text: string;
   created_at: string;
   updated_at: string;
 }
 
 export type Direction = 'IN' | 'OUT';
-export type MessageSource = 'PASTED' | 'TEMPLATE' | 'LLM_DRAFT' | 'EDITED_DRAFT' | 'MANUAL';
+export type MessageSource = 'PASTED' | 'TEMPLATE' | 'LLM_DRAFT' | 'EDITED_DRAFT' | 'MANUAL' | 'WHATSAPP';
 
 export interface Message {
   msg_id: string;
@@ -98,12 +116,12 @@ export interface Faq { faq_id: string; event: EventCode | 'ALL'; question: strin
 
 export function emptyLead(partial: Partial<Lead> = {}): Lead {
   return {
-    lead_id: '', event: 'ROADSHOW', full_name: '', call_name: '', call_name_needs_review: false, gender: '',
+    lead_id: '', no: 0, event: 'ROADSHOW', full_name: '', call_name: '', call_name_needs_review: false, gender: '',
     phone_e164: '', phone_invalid: false, email: '', source: '', agent_name: '', visit_date: null,
     visit_date_label: '', arrival_time: '', session: 'NONE', info_only: false, guests: null, guests_bucket: 'unknown',
     state: 'NEW', bitrix_status: '', case_code: '', first_sent_at: null, last_outbound_at: null,
     last_inbound_at: null, reminder_count: 0, last_reminder_at: null, last_template: '', confirmed_at: null, needs_pa: false,
-    pa_preferred_time: '', pa_forwarded: false, opt_out: false, no_whatsapp: false, needs_attention: false, notes: '', created_at: '',
+    pa_preferred_time: '', pa_forwarded: false, opt_out: false, no_whatsapp: false, needs_attention: false, notes: '', wa_status: '', next_step: '', reminder_text: '', created_at: '',
     updated_at: '', ...partial,
   };
 }

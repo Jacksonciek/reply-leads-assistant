@@ -76,6 +76,7 @@ function base(event: EventCode, row: Record<string, unknown>, _rowRef: string): 
     event, full_name, call_name: cn.callName, call_name_needs_review: cn.needsReview, agent_name: cn.agentName,
     gender, phone_e164: ph.phone, phone_invalid: ph.invalid, email: clean(row['Email']),
     state: mapExcelStatus(row['Status']), ...legacyStatusFlags(row['Status']), bitrix_status: clean(row['Status in Bitrix']),
+    no: Number(clean(row['No'])) || 0, notes: String(row['Notes'] ?? '').trim(),
   });
   return { lead, warnings };
 }

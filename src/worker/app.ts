@@ -4,7 +4,7 @@ import { getCookie } from 'hono/cookie';
 import { z, ZodError } from 'zod';
 import { EVENT_CODES, type EventCode } from '../../config/events';
 import { TEMPLATE_VARS } from '../../config/templates';
-import { FIRST_CASES, REMINDER_CASES, REMINDER_TEMPLATES, resolveCase, sortKey } from '../domain/cases';
+import { REMINDER_TEMPLATES, resolveCase, sortKey } from '../domain/cases';
 import { buildDashboard, roomMeta, sortLeads, type LeadView } from '../domain/dashboard';
 import { formatBitrixTitle } from '../domain/bitrix-title';
 import { deriveCallName, normalizeGender } from '../domain/names';
@@ -55,6 +55,9 @@ const LeadPatchZ = z.object({
   opt_out: z.boolean(),
   no_whatsapp: z.boolean(),
   needs_attention: z.boolean(),
+  wa_status: z.enum(['', 'NO_REPLY', 'NO_WA', 'CONFIRMED', 'UNSURE', 'CANNOT_ATTEND', 'BAD_LEAD']),
+  next_step: z.string().max(500),
+  reminder_text: z.string().max(5000),
 }).partial();
 
 const NewLeadZ = LeadPatchZ.extend({
@@ -70,7 +73,7 @@ const MsgInZ = z.object({
   direction: z.enum(['IN', 'OUT']),
   text: z.string().min(1).max(5000),
   sent_at: IsoZ.nullable().optional(),
-  source: z.enum(['PASTED', 'TEMPLATE', 'LLM_DRAFT', 'EDITED_DRAFT', 'MANUAL']).optional(),
+  source: z.enum(['PASTED', 'TEMPLATE', 'LLM_DRAFT', 'EDITED_DRAFT', 'MANUAL', 'WHATSAPP']).optional(),
 });
 
 const SuggestionZ = z.object({
@@ -107,7 +110,8 @@ export function applyPatch(lead: Lead, p: z.infer<typeof LeadPatchZ>): Lead {
   if (p.guests !== undefined) { l.guests = p.guests; if (p.guests != null) l.guests_bucket = ''; }
   if (p.guests_bucket !== undefined) { l.guests_bucket = p.guests_bucket; if (p.guests_bucket === '3+' && (l.guests ?? 0) < 3) l.guests = null; }
   if (p.state !== undefined) l.state = p.state;
-  for (const k of ['bitrix_status', 'notes', 'pa_preferred_time'] as const) if (p[k] !== undefined) l[k] = p[k]!;
+  for (const k of ['bitrix_status', 'notes', 'pa_preferred_time', 'next_step', 'reminder_text'] as const) if (p[k] !== undefined) l[k] = p[k]!;
+  if (p.wa_status !== undefined) l.wa_status = p.wa_status;
   for (const k of ['needs_pa', 'pa_forwarded', 'opt_out', 'no_whatsapp', 'needs_attention'] as const) if (p[k] !== undefined) l[k] = p[k]!;
   return l;
 }
@@ -321,6 +325,29 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     return c.json({ added, warning, lead });
   });
 
+  // Replace the conversation with what WhatsApp Web shows (read by hand, never sent from here).
+  // Older app messages from before the first WhatsApp message stay as archive.
+  app.put('/api/leads/:id/whatsapp', async (c) => {
+    const svc = (c as C).var.svc;
+    const { messages } = z.object({ messages: z.array(MsgInZ.extend({ sent_at: IsoZ })).max(500) }).parse(await c.req.json());
+    const now = clock();
+    const lead = await svc.repo.lead(c.req.param('id'), now);
+    const sorted = messages.map((m) => ({ ...m, sent_at: new Date(m.sent_at).toISOString() })).sort((a, b) => a.sent_at.localeCompare(b.sent_at));
+    const from = sorted.length ? Date.parse(sorted[0].sent_at) : Infinity;
+    const old = await svc.repo.messagesFor(lead.lead_id);
+    const replaced = old.filter((m) => m.source === 'WHATSAPP' || Date.parse(m.sent_at) >= from);
+    await svc.repo.messages.updateMany('msg_id', new Map(replaced.map((m) => [m.msg_id, { deleted: 'TRUE' }])));
+    const added = await svc.repo.addMessages(sorted.map((m) => ({
+      lead_id: lead.lead_id, direction: m.direction, source: 'WHATSAPP' as const, text: m.text.trim(), template_code: '', sent_at: m.sent_at,
+    })), now);
+    const ins = added.filter((m) => m.direction === 'IN');
+    const outs = added.filter((m) => m.direction === 'OUT');
+    if (outs.length) { lead.first_sent_at ||= outs[0].sent_at; lead.last_outbound_at = outs[outs.length - 1].sent_at; if (lead.state === 'NEW') lead.state = 'REMINDER'; }
+    if (ins.length) lead.last_inbound_at = ins[ins.length - 1].sent_at;
+    await svc.repo.saveLead(lead, now);
+    return c.json({ added: added.length });
+  });
+
   app.patch('/api/messages/:id', async (c) => {
     const p = z.object({ text: z.string().min(1).max(5000), sent_at: IsoZ, direction: z.enum(['IN', 'OUT']) }).partial().parse(await c.req.json());
     return c.json({ message: await (c as C).var.svc.repo.patchMessage(c.req.param('id'), p) });
@@ -397,26 +424,6 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     return c.json({ ok: true });
   });
 
-  // ---------- bulk generator ----------
-  app.get('/api/bulk', async (c) => {
-    const svc = (c as C).var.svc;
-    const { kind = 'first', event } = c.req.query();
-    const now = clock();
-    const [leads, msgs, templates, events, settings] = await Promise.all([
-      svc.repo.leads(now), svc.repo.allMessages(), svc.repo.templates(), svc.repo.events(), svc.repo.settings(),
-    ]);
-    const items = leads.filter((l) => (!event || event === 'ALL' || l.event === event)).map((l) => {
-      const n = nextMessage(l, leads, templates, now, events);
-      return { lead: view(l, msgs, now), next: n, contact_name: formatBitrixTitle(l) };
-    }).filter(({ lead: l, next }) => {
-      if (!next.template_code) return false;
-      if (kind === 'first') return FIRST_CASES.includes(next.case.code);
-      if (kind === 'reminder') return REMINDER_CASES.includes(next.case.code) && next.case.due;
-      return false;
-    }).sort((a, b) => a.lead.sort_key.localeCompare(b.lead.sort_key));
-    return c.json({ items, link_format: settings.link_format });
-  });
-
   // ---------- import ----------
   app.post('/api/import/commit', async (c) => {
     const svc = (c as C).var.svc;
@@ -428,11 +435,15 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
     for (const raw of body.leads) {
       const l = { ...emptyLead(), ...(raw as Partial<Lead>), lead_id: '' } as Lead;
       if (!EVENT_CODES.includes(l.event)) continue;
-      const dup = existing.find((e) => e.event === l.event && e.phone_e164 === l.phone_e164 && !!l.phone_e164);
+      // Same number, or (number corrected in Bitrix) same name in the same event.
+      const dup = existing.find((e) => e.event === l.event && e.phone_e164 === l.phone_e164 && !!l.phone_e164)
+        ?? existing.find((e) => e.event === l.event && e.full_name.toLowerCase() === l.full_name.toLowerCase() && !!l.full_name);
       if (dup) {
         if (body.mode === 'skip') { skipped++; continue; }
-        const merged: Lead = { ...dup, full_name: l.full_name, gender: l.gender, email: l.email, visit_date: l.visit_date, visit_date_label: l.visit_date_label,
-          session: l.session, info_only: l.info_only, guests: l.guests, guests_bucket: l.guests_bucket, state: l.state, bitrix_status: l.bitrix_status, source: l.source };
+        // The Excel is the source of truth for every column it has; app-only fields (status, chat...) stay.
+        const merged: Lead = { ...applyPatch(dup, { full_name: l.full_name, phone: l.phone_e164 }), gender: l.gender, email: l.email,
+          visit_date: l.visit_date, visit_date_label: l.visit_date_label, session: l.session, info_only: l.info_only, guests: l.guests,
+          guests_bucket: l.guests_bucket, bitrix_status: l.bitrix_status, source: l.source, notes: l.notes, no: l.no || dup.no };
         await svc.repo.saveLead(merged, now);
         updated++;
       } else toCreate.push(l);

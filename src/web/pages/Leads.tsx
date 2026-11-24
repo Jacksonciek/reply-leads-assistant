@@ -3,29 +3,23 @@ import { Link, Outlet, useNavigate, useParams } from 'react-router-dom';
 import type { EventCode } from '../../../config/events';
 import { sessionInfo } from '../../../config/events';
 import type { LeadView } from '../../domain/dashboard';
-import { guestsLabel, type LeadState } from '../../domain/types';
+import { EXCEL_COLUMNS, leadToExcelRow } from '../../domain/sheet-row';
+import { guestsLabel, WA_STATUS_LABEL, type LeadState } from '../../domain/types';
 import { api } from '../api';
-import { Avatar, ErrorBox, EventChip, EventDot, Loading, STATE_EN, StateChip } from '../shared';
+import { Avatar, ErrorBox, EventChip, EventDot, Loading, STATE_EN, WA_TONE, WaChip } from '../shared';
 
+/** Same sheets and columns as the Bitrix24 Excel file, rows in the file's "No" order; new leads come last. */
 export async function exportXlsx(leads: LeadView[]) {
   // Loaded on demand: xlsx is most of the bundle and only needed here and on Import.
   const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
   for (const ev of ['ROADSHOW', 'JESSELTON'] as EventCode[]) {
-    const rows = leads.filter((l) => l.event === ev).map((l) => ({
-      Name: l.full_name,
-      Phone: l.phone_e164,
-      ...(ev === 'ROADSHOW'
-        ? { Date: l.visit_date_label || 'Not decided', 'Arrival time': l.arrival_time }
-        : { Source: l.source === 'Website' || l.source === 'Meta' ? l.source : '', Session: sessionInfo(l.session)?.label ?? 'Not decided', Guests: guestsLabel(l) ?? '' }),
-      Status: STATE_EN[l.state],
-      'Needs PA': l.needs_pa ? 'Yes' : '',
-      'PA time': l.pa_preferred_time,
-      'Forwarded to PA': l.pa_forwarded ? 'Yes' : '',
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), ev === 'ROADSHOW' ? 'Roadshow' : 'Jesselton');
+    const rows = leads.filter((l) => l.event === ev)
+      .sort((a, b) => (a.no || Infinity) - (b.no || Infinity) || a.created_at.localeCompare(b.created_at))
+      .map((l) => { const r: Record<string, string | number> = leadToExcelRow(l); r.No = Number(r.No) || ''; return r; });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header: EXCEL_COLUMNS[ev] }), ev === 'ROADSHOW' ? 'Roadshow' : 'Jesselton');
   }
-  XLSX.writeFile(wb, `attendance-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `Roadshow__Jesselton-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 type EvFilter = 'ALL' | EventCode;
@@ -48,16 +42,6 @@ const attendance = (l: LeadView) => l.event === 'ROADSHOW'
 /** Group header shown above the first lead of each event. */
 const groupStart = (list: LeadView[], i: number) => i === 0 || list[i - 1].event !== list[i].event;
 
-/** Short status for the list: what to do with this lead now. */
-function todo(l: LeadView): { text: string; tone: string } | null {
-  if (l.no_whatsapp) return { text: 'No WA', tone: 'bg-black/[0.05] text-ink-3' };
-  if (l.opt_out) return { text: 'Do not contact', tone: 'bg-red-50 text-red-700' };
-  if (l.room.last_dir === 'IN') return { text: 'Reply', tone: 'bg-accent-soft text-accent' };
-  if (l.due) return { text: l.state === 'NEW' ? 'First msg' : `Send ${l.case}`, tone: 'bg-orange-50 text-orange-800' };
-  if (l.state === 'REMINDER' && !['X', 'WAIT'].includes(l.case)) return { text: 'Sent', tone: 'bg-black/[0.04] text-ink-3' };
-  return null;
-}
-
 function preview(l: LeadView) {
   if (l.room.last_text) return `${l.room.last_dir === 'OUT' ? 'You: ' : ''}${l.room.last_text}`;
   return `${STATE_EN[l.state as LeadState]} · ${attendance(l)}`;
@@ -67,16 +51,22 @@ function preview(l: LeadView) {
 function useLeads() {
   const [leads, setLeads] = useState<LeadView[] | null>(null);
   const [err, setErr] = useState('');
-  const [ev, setEv] = useState<EvFilter>(() => { try { return (localStorage.getItem('ws.ev') as EvFilter) || 'ALL'; } catch { return 'ALL'; } });
+  // Dashboard links open the list as /leads?ev=ROADSHOW&s=CONFIRMED.
+  const [url] = useState(() => new URLSearchParams(window.location.search));
+  const [ev, setEv] = useState<EvFilter>(() => {
+    const fromUrl = url.get('ev') as EvFilter | null;
+    if (fromUrl) return fromUrl;
+    try { return (localStorage.getItem('ws.ev') as EvFilter) || 'ALL'; } catch { return 'ALL'; }
+  });
   const [q, setQ] = useState('');
-  const [state, setState] = useState('');
+  const [state, setState] = useState(() => url.get('s') ?? '');
   const refresh = useCallback(() => {
     api<{ leads: LeadView[] }>('/api/leads').then((r) => { setLeads(r.leads); setErr(''); }).catch((e) => setErr(e.message));
   }, []);
   useEffect(refresh, [refresh]);
   useEffect(() => { try { localStorage.setItem('ws.ev', ev); } catch { /* private mode */ } }, [ev]);
   const list = useMemo(() => (leads ?? [])
-    .filter((l) => (ev === 'ALL' || l.event === ev) && (!state || l.state === state)
+    .filter((l) => (ev === 'ALL' || l.event === ev) && (!state || l.wa_status === state)
       && (!q || `${l.full_name} ${l.call_name} ${l.phone_e164}`.toLowerCase().includes(q.toLowerCase())))
     // Server order: Roadshow then Jesselton, action needed first, Roadshow by visit day (see sortKey).
     .sort((a, b) => a.sort_key.localeCompare(b.sort_key)), [leads, ev, q, state]);
@@ -100,7 +90,7 @@ function StatusFilter({ state, setState, className = '' }: { state: string; setS
   return (
     <select className={`input h-9 min-h-9 text-[13px] ${className}`} value={state} onChange={(e) => setState(e.target.value)} aria-label="Filter by status">
       <option value="">All statuses</option>
-      {Object.entries(STATE_EN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      {Object.entries(WA_STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
     </select>
   );
 }
@@ -156,13 +146,12 @@ export function LeadsPage() {
                 {f.list.map((l, i) => {
                   const w = l.room.last_dir === 'IN';
                   const go = () => nav(`/room/${l.lead_id}`);
-                  const t = todo(l);
                   return (
                     <Fragment key={l.lead_id}>
                     {groupStart(f.list, i) && (
                       <tr className="border-b border-line bg-canvas/60"><td colSpan={6} className="px-4 py-1.5 text-[12px] font-semibold text-ink-2">{l.event === 'ROADSHOW' ? 'Roadshow' : 'Jesselton'}</td></tr>
                     )}
-                    <tr onClick={go} className="cursor-pointer border-b border-line transition-colors last:border-0 hover:bg-canvas">
+                    <tr onClick={go} className={`cursor-pointer border-b border-line transition-colors last:border-0 hover:bg-canvas ${l.wa_status ? WA_TONE[l.wa_status].row : ''}`}>
                       {/* Phone: one rich cell. Tablet and up: real columns. */}
                       <td className="px-4 py-3" colSpan={1}>
                         <Link to={`/room/${l.lead_id}`} className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
@@ -179,7 +168,7 @@ export function LeadsPage() {
                         </Link>
                       </td>
                       <td className="hidden px-3 py-3 md:table-cell"><EventChip event={l.event} /></td>
-                      <td className="hidden px-3 py-3 md:table-cell"><span className="flex flex-wrap gap-1"><StateChip state={l.state as LeadState} />{t && <span className={`chip ${t.tone}`}>{t.text}</span>}</span></td>
+                      <td className="hidden px-3 py-3 md:table-cell"><WaChip status={l.wa_status} />{l.next_step && <span className="mt-1 block truncate text-[11.5px] text-ink-3" title={l.next_step}>{l.next_step}</span>}</td>
                       <td className="hidden truncate px-3 py-3 text-[13px] text-ink-2 lg:table-cell">{attendance(l)}</td>
                       <td className={`hidden truncate px-3 py-3 text-[13px] md:table-cell ${w ? 'text-ink' : 'text-ink-3'}`}>{l.room.last_text ? preview(l) : '—'}</td>
                       <td className="hidden px-4 py-3 text-right text-[12px] tabular-nums text-ink-3 md:table-cell">{relTime(l.room.last_at ?? l.created_at)}</td>
@@ -220,12 +209,11 @@ export function Workspace() {
             {f.list.map((l, i) => {
               const on = l.lead_id === id;
               const waiting = l.room.last_dir === 'IN';
-              const t = todo(l);
               return (
                 <li key={l.lead_id}>
                   {groupStart(f.list, i) && <div className="px-4 pb-1 pt-3 text-[11.5px] font-semibold uppercase tracking-wide text-ink-3">{l.event === 'ROADSHOW' ? 'Roadshow' : 'Jesselton'}</div>}
                   <Link to={`/room/${l.lead_id}`} aria-current={on ? 'page' : undefined}
-                    className={`mx-1.5 flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-100 ${on ? 'bg-accent-soft' : 'hover:bg-canvas'}`}>
+                    className={`mx-1.5 flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-100 ${on ? 'bg-accent-soft' : `hover:bg-canvas ${l.wa_status ? WA_TONE[l.wa_status].row : ''}`}`}>
                     <Avatar name={l.call_name || l.full_name} event={l.event} size={40} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
@@ -235,7 +223,7 @@ export function Workspace() {
                       <div className="flex items-center gap-1.5">
                         <EventDot event={l.event} />
                         <span className={`truncate text-[13px] ${waiting ? 'text-ink' : 'text-ink-3'}`}>{preview(l)}</span>
-                        {t && <span className={`chip ml-auto shrink-0 px-1.5 py-0 text-[10.5px] ${t.tone}`}>{t.text}</span>}
+                        {l.wa_status && <span className={`chip ml-auto shrink-0 px-1.5 py-0 text-[10.5px] ${WA_TONE[l.wa_status].chip}`}>{WA_STATUS_LABEL[l.wa_status]}</span>}
                       </div>
                     </div>
                   </Link>

@@ -35,7 +35,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-3">
-      <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Settings</h1>
+      <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Adjustments</h1>
       <div className="card space-y-3">
         {FIELDS.map(([k, label, ph]) => (
           <div key={k}><label className="label">{label}</label><input className="input" placeholder={ph} value={v[k] ?? ''} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></div>

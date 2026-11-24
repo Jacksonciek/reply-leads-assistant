@@ -1,7 +1,7 @@
 // "Hari Ini" queue and per-event stats (Section 12.2). Pure.
 import type { EventCode } from '../../config/events';
 import { FIRST_CASES, REMINDER_CASES, resolveCase } from './cases';
-import type { Lead, Message } from './types';
+import type { Lead, Message, WaStatus } from './types';
 
 export interface RoomMeta {
   msg_count: number;
@@ -35,6 +35,8 @@ export interface Dashboard {
 export interface Stats {
   total: number; new: number; reminder: number; done: number; reminder_due: number; reminder_sent: number;
   do_not_contact: number; needs_pa: number; no_whatsapp: number; s1: number; s2: number;
+  /** Leads per WhatsApp status (only statuses that were set). */
+  wa: Partial<Record<WaStatus, number>>;
 }
 
 const excluded = (l: Lead) => l.no_whatsapp || l.opt_out || l.state === 'DONE';
@@ -81,6 +83,7 @@ export function buildDashboard(leads: LeadView[], now: Date): Dashboard {
       no_whatsapp: ls.filter((l) => l.no_whatsapp).length,
       s1: going.filter((l) => l.session === 'S1').length,
       s2: going.filter((l) => l.session === 'S2').length,
+      wa: ls.reduce((m, l) => (l.wa_status ? { ...m, [l.wa_status]: (m[l.wa_status] ?? 0) + 1 } : m), {} as Stats['wa']),
     };
   }
   return d;

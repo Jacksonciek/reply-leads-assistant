@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { EventCode } from '../../config/events';
 import { clickToSendLink, type LinkFormat } from '../domain/links';
 import { getSalam, isProactiveHours, shortWib } from '../domain/time';
-import { type LeadState } from '../domain/types';
+import { WA_STATUS_LABEL, type LeadState, type WaStatus } from '../domain/types';
 
 export const EVENT_LABEL: Record<EventCode, string> = { ROADSHOW: 'Roadshow', JESSELTON: 'Jesselton' };
 
@@ -61,6 +61,20 @@ const STATE_COLORS: Record<LeadState, string> = {
 };
 export function StateChip({ state }: { state: LeadState }) {
   return <span className={`chip ${STATE_COLORS[state] ?? ''}`}>{STATE_EN[state]}</span>;
+}
+
+/** Confirmed = green, bad lead = red (also used to tint rows). */
+export const WA_TONE: Record<Exclude<WaStatus, ''>, { chip: string; row: string }> = {
+  CONFIRMED: { chip: 'bg-emerald-100 text-emerald-800', row: 'bg-emerald-50/70' },
+  BAD_LEAD: { chip: 'bg-red-100 text-red-700', row: 'bg-red-50/70' },
+  UNSURE: { chip: 'bg-amber-50 text-amber-800', row: '' },
+  NO_REPLY: { chip: 'bg-orange-50 text-orange-800', row: '' },
+  NO_WA: { chip: 'bg-black/[0.05] text-ink-3', row: '' },
+  CANNOT_ATTEND: { chip: 'bg-slate-100 text-slate-700', row: '' },
+};
+export function WaChip({ status }: { status: WaStatus }) {
+  if (!status) return null;
+  return <span className={`chip ${WA_TONE[status].chip}`}>{WA_STATUS_LABEL[status]}</span>;
 }
 
 export const fmtTime = (iso: string | null | undefined) => (iso ? shortWib(iso) : '');

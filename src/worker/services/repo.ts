@@ -108,7 +108,7 @@ export class Repo {
     const { header, rows } = await t.load();
     const hit = rows.find((r) => r.obj['lead_id'] === lead.lead_id);
     if (!hit) throw new NotFound('Lead row not found in the sheet (maybe deleted)');
-    const merged = { ...hit.obj, ...leadToRow(lead) };
+    const merged = { ...hit.obj, ...leadToRow(lead, lead.no || undefined) };
     await this.store.write(EVENTS[lead.event].sheet_tab, [{ row: hit.row, col: 1, values: header.map((h) => merged[h] ?? '') }]);
     return lead;
   }
@@ -125,7 +125,10 @@ export class Repo {
         l.created_at ||= now.toISOString();
         l.updated_at = now.toISOString();
         l.case_code = resolveCase(l, now).code;
-        const r = leadToRow(l, ++no);
+        // Keep the Excel row number when the lead comes from the Excel file; new leads go to the bottom.
+        l.no = l.no || ++no;
+        no = Math.max(no, l.no);
+        const r = leadToRow(l, l.no);
         return header.map((h) => r[h] ?? '');
       });
       await this.store.append(EVENTS[ev].sheet_tab, values);

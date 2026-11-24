@@ -6,7 +6,6 @@ import { HomePage } from './pages/Home';
 import { LeadsPage, Workspace } from './pages/Leads';
 import { NewLeadPage } from './pages/NewLead';
 import { RoomPage } from './pages/Room';
-import { BulkPage } from './pages/Bulk';
 import { ImportPage } from './pages/Import';
 import { TemplatesPage } from './pages/Templates';
 import { FaqPage } from './pages/Faq';
@@ -45,21 +44,21 @@ function Mark() {
 }
 
 const NAV = [
-  { to: '/', label: 'Today' },
+  { to: '/', label: 'Dashboard' },
   { to: '/leads', label: 'Leads' },
-  { to: '/bulk', label: 'Bulk' },
-  { to: '/more', label: 'More' },
+  { to: '/templates', label: 'Template' },
+  { to: '/more', label: 'Settings' },
 ];
 
 function MorePage({ authRequired }: { authRequired: boolean }) {
   const items = [
-    ['/import', 'Import Excel', 'Add many leads from a Bitrix24 file'], ['/templates', 'Templates', 'Message text per event'],
-    ['/knowledge', 'Knowledge', 'Answers the AI is allowed to use'], ['/settings', 'Settings', 'AI model, Google Sheets, link format'],
+    ['/settings', 'Adjustments', 'AI model, event names, link format'], ['/import', 'Import Excel', 'Add or update leads from the Bitrix24 file'],
+    ['/knowledge', 'Knowledge', 'Answers the AI is allowed to use'],
   ];
   const nav = useNavigate();
   return (
     <div className="mx-auto max-w-xl space-y-4">
-      <h1 className="text-[26px] font-semibold">More</h1>
+      <h1 className="text-[26px] font-semibold">Settings</h1>
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         {items.map(([to, label, hint]) => (
           <Link key={to} to={to} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-0 hover:bg-canvas">
@@ -99,7 +98,8 @@ export function App() {
 
   const ws = isWorkspace(loc.pathname);
   const inRoom = loc.pathname.startsWith('/room/');
-  const navActive = (to: string) => (to === '/leads' ? ws || loc.pathname === '/leads' : to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to));
+  const navActive = (to: string) => (to === '/leads' ? ws || loc.pathname === '/leads' : to === '/' ? loc.pathname === '/'
+    : to === '/more' ? ['/more', '/settings', '/import', '/knowledge'].includes(loc.pathname) : loc.pathname.startsWith(to));
 
   return (
     <ConfigCtx.Provider value={{ cfg, reload }}>
@@ -128,7 +128,6 @@ export function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/leads" element={<LeadsPage />} />
-                <Route path="/bulk" element={<BulkPage />} />
                 <Route path="/leads/new" element={<NewLeadPage />} />
                 <Route path="/import" element={<ImportPage />} />
                 <Route path="/templates" element={<TemplatesPage />} />

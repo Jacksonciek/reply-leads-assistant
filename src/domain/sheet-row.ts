@@ -5,7 +5,7 @@ import { deriveCallName, normalizeGender } from './names';
 import { legacyStatusFlags, parseGuests, parseRoadshowDate, parseSession, parseSource } from './parse-excel-row';
 import { normalizePhone } from './phone';
 import { dateLabel } from './time';
-import { emptyLead, STATE_LABEL, type Lead } from './types';
+import { emptyLead, STATE_LABEL, WA_STATUS_LABEL, type Lead, type WaStatus } from './types';
 
 export const VISIBLE_COLUMNS: Record<EventCode, string[]> = {
   ROADSHOW: ['No', 'Name', 'Gender', 'Phone number', 'Email', 'Date', 'Status', 'Status in Bitrix', 'Nama Sapaan', 'Jam Datang', 'Catatan'],
@@ -16,7 +16,19 @@ export const SYSTEM_COLUMNS = [
   'lead_id', 'phone_e164', 'state', 'case_code', 'first_sent_at', 'last_outbound_at', 'last_inbound_at',
   'reminder_count', 'last_template', 'confirmed_at', 'needs_pa', 'pa_preferred_time', 'pa_forwarded', 'opt_out',
   'needs_attention', 'last_reminder_at', 'no_whatsapp', 'call_name_ok', 'agent_name', 'created_at', 'updated_at',
+  'wa_status', 'next_step', 'reminder_text',
 ];
+
+/** Columns of the Bitrix24 Excel file, in its exact order (export must match them). */
+export const EXCEL_COLUMNS: Record<EventCode, string[]> = {
+  ROADSHOW: ['No', 'Name', 'Gender', 'Phone number', 'Email', 'Date', 'Status in Bitrix', 'Notes'],
+  JESSELTON: ['No', 'Name', 'Gender', 'Phone number', 'Website / Meta', 'Time', 'Guest', 'Status in Bitrix', 'Notes'],
+};
+
+const waStatus = (v: string | undefined): WaStatus => {
+  const s = str(v).trim() as WaStatus;
+  return s in WA_STATUS_LABEL ? s : '';
+};
 
 export const leadColumns = (ev: EventCode) => [...VISIBLE_COLUMNS[ev], ...SYSTEM_COLUMNS];
 
@@ -49,6 +61,7 @@ export function rowToLead(ev: EventCode, r: RowObj): Lead {
   const manualCall = str(r['Nama Sapaan']).trim();
   const lead = emptyLead({
     lead_id: str(r['lead_id']).trim(),
+    no: Number(str(r['No']).trim()) || 0,
     event: ev,
     full_name,
     call_name: manualCall || cn.callName,
@@ -74,6 +87,9 @@ export function rowToLead(ev: EventCode, r: RowObj): Lead {
     no_whatsapp: bool(r['no_whatsapp']),
     needs_attention: bool(r['needs_attention']),
     notes: str(r['Catatan']),
+    wa_status: waStatus(r['wa_status']),
+    next_step: str(r['next_step']),
+    reminder_text: str(r['reminder_text']),
     created_at: str(r['created_at']),
     updated_at: str(r['updated_at']),
   });
@@ -154,6 +170,9 @@ export function leadToRow(l: Lead, no?: number): RowObj {
     needs_attention: b(l.needs_attention),
     call_name_ok: b(!l.call_name_needs_review),
     agent_name: l.agent_name,
+    wa_status: l.wa_status,
+    next_step: l.next_step,
+    reminder_text: l.reminder_text,
     created_at: l.created_at,
     updated_at: l.updated_at,
   };
@@ -169,6 +188,13 @@ export function leadToRow(l: Lead, no?: number): RowObj {
     r['Jumlah Pasti'] = l.guests != null && l.guests > 0 ? String(l.guests) : '';
   }
   return r;
+}
+
+/** One row of the exported Excel, keyed by EXCEL_COLUMNS (same values/format as the Bitrix24 file). */
+export function leadToExcelRow(l: Lead): RowObj {
+  const r = leadToRow(l, l.no || undefined);
+  r['Notes'] = l.notes;
+  return Object.fromEntries(EXCEL_COLUMNS[l.event].map((c) => [c, r[c] ?? '']));
 }
 
 /** A row is a lead when Name or Phone number is filled. */

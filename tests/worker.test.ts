@@ -134,31 +134,30 @@ describe('room flow', () => {
     expect(room.json.messages.map((m: any) => m.text)).toEqual(['siap pak']);
   });
 
-  it('bulk generator on 23 Nov: first messages for New; reminders sorted (visit today first), sent ones drop out', async () => {
-    const t = setup(undefined, new Date('2026-11-23T02:00:00Z')); // Senin 23 Nov 09.00 WIB
+  it('WhatsApp sync replaces the chat from its first message on, keeps older app messages as archive', async () => {
+    const t = setup();
     await t.login();
-    const rows: [string, string, string, Record<string, unknown>][] = [
-      ['A Satu', '081200000001', 'NEW', {}],
-      ['B Dua', '081200000002', 'REMINDER', { no_whatsapp: true }],
-      ['C Tiga', '081200000003', 'REMINDER', {}],
-      ['D Empat', '081200000004', 'REMINDER', { visit_date: '2026-11-23' }],
-      ['E Lima', '081200000005', 'REMINDER', { visit_date: '2026-11-24' }],
+    const { json } = await t.req('POST', '/api/leads', { event: 'ROADSHOW', full_name: 'Ella Hariyanti', gender: 'Ibu', phone: '081233334444', state: 'REMINDER', pasted_history: '[17/11/26 09.00.00] Jackson: Halo lama\n[19/11/26 09.12.33] Jackson: Selamat pagi' });
+    const wa = [
+      { direction: 'OUT', text: 'Selamat pagi, Ibu', sent_at: '2026-11-19T02:12:00Z' },
+      { direction: 'IN', text: 'siap bu', sent_at: '2026-11-19T02:30:00Z' },
     ];
-    for (const [name, phone, state, extra] of rows) {
-      await t.req('POST', '/api/leads', { event: 'ROADSHOW', full_name: name, gender: 'Bapak', phone, state, last_contacted_at: '2026-11-18T03:00:00Z', ...extra });
-    }
-    const first = await t.req('GET', '/api/bulk?kind=first');
-    expect(first.json.items.map((i: any) => i.lead.full_name)).toEqual(['A Satu']);
-    const rem = await t.req('GET', '/api/bulk?kind=reminder');
-    expect(rem.json.items.map((i: any) => [i.lead.full_name, i.next.template_code])).toEqual([['D Empat', 'A4'], ['E Lima', 'A4'], ['C Tiga', 'A3']]);
-    expect(rem.json.items[0].next.text).toContain('kunjungan Bapak hari ini');
-    expect(rem.json.items[1].next.text).toContain('kunjungan Bapak besok');
-    const id = rem.json.items[0].lead.lead_id;
-    await t.req('POST', `/api/leads/${id}/mark-sent`, { text: rem.json.items[0].next.text, template_code: 'A4' });
-    const after = (await t.req('GET', `/api/leads/${id}`)).json;
-    expect(after.lead).toMatchObject({ reminder_count: 1, due: false, state: 'REMINDER' });
-    expect(after.next.text).toContain('kunjungan Bapak hari ini'); // still ready to copy
-    expect((await t.req('GET', '/api/bulk?kind=reminder')).json.items.map((i: any) => i.lead.full_name)).toEqual(['E Lima', 'C Tiga']);
+    await t.req('PUT', `/api/leads/${json.lead_id}/whatsapp`, { messages: wa });
+    await t.req('PUT', `/api/leads/${json.lead_id}/whatsapp`, { messages: wa }); // re-sync does not duplicate
+    const room = (await t.req('GET', `/api/leads/${json.lead_id}`)).json;
+    expect(room.messages.map((m: any) => [m.source, m.text])).toEqual([['MANUAL', 'Halo lama'], ['WHATSAPP', 'Selamat pagi, Ibu'], ['WHATSAPP', 'siap bu']]);
+    expect(room.lead.last_inbound_at).toBe('2026-11-19T02:30:00.000Z');
+  });
+
+  it('import (update) follows the Excel: name, notes and row number; status fields stay', async () => {
+    const t = setup();
+    await t.login();
+    const { json } = await t.req('POST', '/api/leads', { event: 'ROADSHOW', full_name: 'Old Name', gender: 'Ibu', phone: '081233334444', state: 'REMINDER' });
+    await t.req('PATCH', `/api/leads/${json.lead_id}`, { wa_status: 'CONFIRMED', next_step: 'Reminder H-1' });
+    const excel = { event: 'ROADSHOW', full_name: 'New Name', gender: 'Ibu', phone_e164: '6281233334444', no: 7, notes: 'Reminder H-1', state: 'NEW', bitrix_status: 'Following up' };
+    expect((await t.req('POST', '/api/import/commit', { mode: 'update', leads: [excel] })).json.updated).toBe(1);
+    const lead = (await t.req('GET', `/api/leads/${json.lead_id}`)).json.lead;
+    expect(lead).toMatchObject({ full_name: 'New Name', notes: 'Reminder H-1', no: 7, state: 'REMINDER', wa_status: 'CONFIRMED', next_step: 'Reminder H-1' });
   });
 });
 
