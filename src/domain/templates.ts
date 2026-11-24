@@ -96,6 +96,10 @@ export function buildVars(lead: Lead, events: Record<EventCode, EventConfig>, no
     jumlah_label: jumlah,
     link_proyek: events.JESSELTON.project_link ?? undefined,
     guests_variant: lead.guests_bucket === '3+' ? '3plus' : lead.guests == null ? 'empty' : undefined,
+    sesi_jam: ses ? ses.label.slice(0, 5) : undefined, // "11.00" / "15.00"
+    // Jesselton invitation: A = session & guests unknown, B = session only, C = guests only, D = both known
+    // (C3/D3: guests "3 orang atau lebih", so the exact number is asked too).
+    jc_varian: (ses ? (jumlah ? 'D' : 'B') : (jumlah ? 'C' : 'A')) + (jumlah && lead.guests_bucket === '3+' ? '3' : ''),
     sumber_pendaftaran: sumberPendaftaran(lead, ev),
     ...extra,
   };

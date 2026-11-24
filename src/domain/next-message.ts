@@ -77,4 +77,25 @@ export function renderForLead(
   }
 }
 
+export interface InviteMessage { codes: [string, string]; parts: [string, string] | null; error: string | null }
+
+/**
+ * Jesselton "Sabtu ini" invitation, sent as message 1 → video → message 2.
+ * Terkonfirmasi gets the fixed reminder (JC-FIX-*); Belum balas / Balas, belum pasti get the invitation (JC-INV-*).
+ */
+export function jesseltonInvite(
+  lead: Lead, templates: TemplateMap, now: Date, events: Record<EventCode, EventConfig> = EVENTS,
+): InviteMessage | null {
+  if (lead.event !== 'JESSELTON') return null;
+  const codes: [string, string] | null = lead.wa_status === 'CONFIRMED' ? ['JC-FIX-1', 'JC-FIX-2']
+    : lead.wa_status === 'NO_REPLY' || lead.wa_status === 'UNSURE' ? ['JC-INV-1', 'JC-INV-2'] : null;
+  if (!codes) return null;
+  try {
+    const vars = buildVars(lead, events, now);
+    return { codes, parts: [renderTemplate(codes[0], templates, vars), renderTemplate(codes[1], templates, vars)], error: null };
+  } catch (e) {
+    return { codes, parts: null, error: (e as Error).message };
+  }
+}
+
 export { render };

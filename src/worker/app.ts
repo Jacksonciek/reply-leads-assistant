@@ -8,7 +8,7 @@ import { REMINDER_TEMPLATES, resolveCase, sortKey } from '../domain/cases';
 import { buildDashboard, roomMeta, sortLeads, type LeadView } from '../domain/dashboard';
 import { formatBitrixTitle } from '../domain/bitrix-title';
 import { deriveCallName, normalizeGender } from '../domain/names';
-import { alsoRegisteredIn, nextMessage, renderForLead } from '../domain/next-message';
+import { alsoRegisteredIn, jesseltonInvite, nextMessage, renderForLead } from '../domain/next-message';
 import { parseWaPaste } from '../domain/parse-wa-paste';
 import { normalizePhone } from '../domain/phone';
 import { validateTemplate } from '../domain/templates';
@@ -275,6 +275,7 @@ export function createApp(factory: ServicesFactory, clock: () => Date = () => ne
       messages,
       draft: drafts.filter((d) => d.state === 'PENDING').sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null,
       next: nextMessage(lead, leads, templates, now, events),
+      invite: jesseltonInvite(lead, templates, now, events),
       contact_name: formatBitrixTitle(lead),
       also_registered: alsoRegisteredIn(lead, leads),
       link_format: settings.link_format,

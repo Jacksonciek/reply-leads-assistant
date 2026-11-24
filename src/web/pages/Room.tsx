@@ -4,7 +4,7 @@ import { sessionInfo } from '../../../config/events';
 import type { LeadView } from '../../domain/dashboard';
 import { flagLabel } from '../../domain/guardrails';
 import type { LinkFormat } from '../../domain/links';
-import type { NextMessage } from '../../domain/next-message';
+import type { InviteMessage, NextMessage } from '../../domain/next-message';
 import { parseWaPaste, type PastedMessage } from '../../domain/parse-wa-paste';
 import type { AnyIntent } from '../../domain/routing';
 import { DATE_OPTIONS } from '../../domain/sheet-row';
@@ -19,7 +19,7 @@ import type { WorkspaceCtx } from './Leads';
 
 interface RoomData {
   lead: LeadView; messages: Message[]; draft: Draft | null; next: NextMessage; contact_name: string;
-  also_registered: string[]; link_format: LinkFormat; poster: string;
+  also_registered: string[]; link_format: LinkFormat; poster: string; invite: InviteMessage | null;
 }
 
 const DATES = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'];
@@ -580,6 +580,26 @@ function AttendanceEdit({ lead, onSave, onCancel }: { lead: LeadView; onSave: (b
   );
 }
 
+/** Jesselton invitation: message 1, then the video, then message 2 — each copied on its own. */
+function InviteSteps({ invite }: { invite: InviteMessage }) {
+  const toast = useToast();
+  if (!invite.parts) return <div className="mt-3"><ErrorBox error={`${invite.codes.join(' + ')}: ${invite.error}`} /></div>;
+  const Step = ({ n, text, code }: { n: number; text: string; code: string }) => (
+    <div>
+      <div className="eyebrow mb-1 mt-3">Pesan {n} <span className="font-mono normal-case text-ink-3">{code}</span></div>
+      <p className="whitespace-pre-wrap rounded-xl bg-canvas p-2.5 text-[13.5px]">{text}</p>
+      <button className="btn-ghost mt-1.5 h-9 min-h-9 text-[13px]" onClick={async () => { await copyText(text); toast(`Pesan ${n} copied`); }}>Copy pesan {n}</button>
+    </div>
+  );
+  return (
+    <>
+      <Step n={1} text={invite.parts[0]} code={invite.codes[0]} />
+      <p className="mt-3 rounded-xl bg-gold-soft px-3 py-2 text-[13px] text-gold">🎥 Kirim 1 video di sini</p>
+      <Step n={2} text={invite.parts[1]} code={invite.codes[1]} />
+    </>
+  );
+}
+
 function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
   const { lead } = d;
   const [notes, setNotes] = useState(lead.notes);
@@ -603,12 +623,16 @@ function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
         <div className="eyebrow mb-1 mt-3">Next step</div>
         <input className="input" value={nextStep} onChange={(e) => setNextStep(e.target.value)} placeholder="e.g. Reminder H-1" />
         {nextStep !== lead.next_step && <button className="btn-primary mt-2 h-9 min-h-9" onClick={() => patch({ next_step: nextStep }, 'Next step saved')}>Save</button>}
-        <div className="eyebrow mb-1 mt-3">Reminder (copy, send yourself)</div>
-        <textarea className="input min-h-32 text-[13.5px]" value={reminder} onChange={(e) => setReminder(e.target.value)} placeholder="No reminder needed" />
-        <div className="mt-2 flex gap-2">
-          <button className="btn-ghost h-9 min-h-9 text-[13px]" disabled={!reminder.trim()} onClick={async () => { await copyText(reminder); toast('Reminder copied'); }}>Copy</button>
-          {reminder !== withSalam(lead.reminder_text) && <button className="btn-primary h-9 min-h-9" onClick={() => patch({ reminder_text: reminder }, 'Reminder saved')}>Save</button>}
-        </div>
+        {d.invite ? <InviteSteps invite={d.invite} /> : (
+          <>
+            <div className="eyebrow mb-1 mt-3">Reminder (copy, send yourself)</div>
+            <textarea className="input min-h-32 text-[13.5px]" value={reminder} onChange={(e) => setReminder(e.target.value)} placeholder="No reminder needed" />
+            <div className="mt-2 flex gap-2">
+              <button className="btn-ghost h-9 min-h-9 text-[13px]" disabled={!reminder.trim()} onClick={async () => { await copyText(reminder); toast('Reminder copied'); }}>Copy</button>
+              {reminder !== withSalam(lead.reminder_text) && <button className="btn-primary h-9 min-h-9" onClick={() => patch({ reminder_text: reminder }, 'Reminder saved')}>Save</button>}
+            </div>
+          </>
+        )}
       </div>
       <div>
         <div className="eyebrow mb-2">Status</div>

@@ -8,6 +8,7 @@ import { clickToSendLink } from '../src/domain/links';
 import { deriveCallName } from '../src/domain/names';
 import { normalizePhone, maskPhone } from '../src/domain/phone';
 import { hasMedia, isOptOut, isShortAck } from '../src/domain/precheck';
+import { jesseltonInvite } from '../src/domain/next-message';
 import { routeIntent, type Classification } from '../src/domain/routing';
 import { buildVars, render, renderTemplate, validateTemplate, type TemplateMap } from '../src/domain/templates';
 import { fromWib, getSalam, isProactiveHours, relativeDayWord } from '../src/domain/time';
@@ -308,5 +309,33 @@ describe('click-to-send links', () => {
     const enc = link.slice(link.indexOf('&text=') + 6, link.indexOf('#Intent'));
     expect(decodeURIComponent(enc)).toBe(text);
     expect(enc).not.toMatch(/[#&?\n ]/);
+  });
+});
+
+describe('Jesselton invitation (JC-INV / JC-FIX)', () => {
+  const lead = (p: Partial<Lead>) => emptyLead({ event: 'JESSELTON', gender: 'Bapak', call_name: 'Andi', visit_date: '2026-11-28', ...p });
+  const inv = (p: Partial<Lead>) => jesseltonInvite(lead(p), TPL, NOW);
+
+  it('picks the template set from the WhatsApp status', () => {
+    expect(inv({ wa_status: 'CONFIRMED', session: 'S2', guests: 2, guests_bucket: '' })?.codes).toEqual(['JC-FIX-1', 'JC-FIX-2']);
+    expect(inv({ wa_status: 'NO_REPLY' })?.codes).toEqual(['JC-INV-1', 'JC-INV-2']);
+    expect(inv({ wa_status: 'UNSURE' })?.codes).toEqual(['JC-INV-1', 'JC-INV-2']);
+    for (const s of ['BAD_LEAD', 'NO_WA', 'CANNOT_ATTEND', ''] as const) expect(inv({ wa_status: s })).toBeNull();
+    expect(jesseltonInvite(emptyLead({ event: 'ROADSHOW', wa_status: 'NO_REPLY' }), TPL, NOW)).toBeNull();
+  });
+
+  it('message 2 asks only for what is missing', () => {
+    const p2 = (p: Partial<Lead>) => inv({ wa_status: 'NO_REPLY', ...p })!.parts![1];
+    expect(p2({ session: 'NONE', guests: null, guests_bucket: 'unknown' })).toBe('Kalau berkenan hadir, lebih nyaman ikut sesi *jam 11.00 siang* atau *jam 15.00 sore*? Dan kira-kira datang bersama berapa orang? Terima kasih Pak! 🙏🏻');
+    expect(p2({ session: 'S1', guests: null, guests_bucket: 'unknown' })).toBe('Kami sudah catat Bapak untuk *sesi jam 11.00*. Kira-kira datang bersama berapa orang? Terima kasih Pak! 🙏🏻');
+    expect(p2({ session: 'UNDECIDED', guests: 2, guests_bucket: '' })).toBe('Kami sudah catat Bapak untuk *2 orang*. Kalau berkenan hadir, lebih nyaman ikut sesi *jam 11.00 siang* atau *jam 15.00 sore*? Terima kasih Pak! 🙏🏻');
+    expect(p2({ session: 'S2', guests: null, guests_bucket: '3+' })).toBe('Kami sudah catat Bapak untuk *sesi jam 15.00* bersama *3 orang atau lebih*. Boleh tahu jumlah pastinya? Mohon dibalas *"Hadir"* bila jadwalnya masih sesuai ya. Terima kasih Pak! 🙏🏻');
+  });
+
+  it('message 1 has the place; the fixed reminder has session and guests', () => {
+    expect(inv({ wa_status: 'NO_REPLY' })!.parts![0]).toContain('Hi Bapak Andi 😊\n\nSabtu ini, 28 November 2026, kami mengadakan *Private Preview Jesselton Courtyard* di *Cambridge Hotel Medan, Emerald 1 (Lantai 25)*.');
+    const fix = inv({ wa_status: 'CONFIRMED', session: 'S2', guests: 2, guests_bucket: '' })!.parts!;
+    expect(fix[0]).toContain('Kami sudah catat Bapak untuk *sesi jam 15.00 WIB* bersama *2 orang*.');
+    expect(fix[1]).toBe('Semoga bisa bertemu Sabtu nanti ya, terima kasih Pak! 🙏🏻');
   });
 });
