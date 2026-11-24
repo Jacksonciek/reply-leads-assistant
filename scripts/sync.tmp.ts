@@ -61,3 +61,7 @@ if (cmd === 'verify') {
   }
   console.log('verify diffs', diffs);
 }
+if (cmd === 'add') {
+  // { "<lead_id>": [{direction, text, sent_at, source}] }
+  for (const [id, messages] of Object.entries(JSON.parse(readFileSync(arg, 'utf8')) as Record<string, any[]>)) console.log(id, (await req('POST', `/api/leads/${id}/messages`, { messages })).added.length);
+}
