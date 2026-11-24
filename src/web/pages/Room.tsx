@@ -197,7 +197,7 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
   const ta = useRef<HTMLTextAreaElement>(null);
 
   // The ready message (first message / reminder) stays visible even when the client wrote last.
-  // Jesselton reminders come only from the invitation templates in the side panel (JC-INV / JC-FIX).
+  // Jesselton reminders come only from the invitation templates (JC-INV / JC-FIX, see InviteCard).
   const oldJcReminder = lead.event === 'JESSELTON' && lead.state !== 'NEW';
   const mode: 'draft' | 'template' | 'none' = draft ? 'draft' : next.template_code && !oldJcReminder ? 'template' : 'none';
   useEffect(() => {
@@ -222,6 +222,14 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
           <div className="skeleton h-3 w-11/12" /><div className="skeleton h-3 w-9/12" /><div className="skeleton h-3 w-10/12" />
         </div>
       </div>
+    );
+  }
+  if (mode === 'none' && !text && oldJcReminder && d.invite) {
+    return (
+      <>
+        {lastIsIn && <div className="flex justify-center pt-4"><button className="btn-accent" onClick={() => generate()}>Draft a reply to the client</button></div>}
+        <InviteCard d={d} invite={d.invite} reload={reload} />
+      </>
     );
   }
   if (mode === 'none' && !text) {
@@ -315,6 +323,31 @@ function DraftCard({ d, reload, generate, generating }: { d: RoomData; reload: (
       </div>
     </div>
     </>
+  );
+}
+
+/** Jesselton invitation at the end of the chat: message 1 → video → message 2, each sent on its own. */
+function InviteCard({ d, invite, reload }: { d: RoomData; invite: InviteMessage; reload: () => Promise<void> }) {
+  const toast = useToast();
+  const markSent = (code: string) => async (final: string) => {
+    await api(`/api/leads/${d.lead.lead_id}/mark-sent`, { body: { text: final, template_code: code } });
+    toast('Recorded as sent');
+    await reload();
+  };
+  return (
+    <div className="flex justify-end pt-2">
+      <div className="animate-rise w-full max-w-[560px] space-y-3 rounded-lg rounded-tr-sm border border-dashed border-emerald-500/60 bg-[#f3fdf1] p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        <span className="chip bg-accent-soft text-accent">{invite.codes[0] === 'JC-FIX-1' ? 'Reminder sudah fix' : 'Undangan belum fix'} · ready to copy</span>
+        {!invite.parts ? <ErrorBox error={invite.error ?? 'Template error'} /> : invite.parts.map((t, i) => (
+          <div key={invite.codes[i]}>
+            {i === 1 && <p className="mb-3 rounded-xl bg-gold-soft px-3 py-2 text-[13px] text-gold">🎥 Kirim 1 video di sini, lalu pesan 2</p>}
+            <div className="mb-1 flex items-center gap-1.5 px-1"><span className="text-[12.5px] font-medium">Pesan {i + 1}</span><CaseChip code={invite.codes[i]} /></div>
+            <p className="whitespace-pre-wrap rounded-xl bg-canvas p-3 text-[14.5px] leading-[1.5]">{t}</p>
+            <SendActions phone={d.lead.phone_e164} text={t} proactive linkFormat={d.link_format} onSent={markSent(invite.codes[i])} />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -582,26 +615,6 @@ function AttendanceEdit({ lead, onSave, onCancel }: { lead: LeadView; onSave: (b
   );
 }
 
-/** Jesselton invitation: message 1, then the video, then message 2 — each copied on its own. */
-function InviteSteps({ invite }: { invite: InviteMessage }) {
-  const toast = useToast();
-  if (!invite.parts) return <div className="mt-3"><ErrorBox error={`${invite.codes.join(' + ')}: ${invite.error}`} /></div>;
-  const Step = ({ n, text, code }: { n: number; text: string; code: string }) => (
-    <div>
-      <div className="eyebrow mb-1 mt-3">Pesan {n} <span className="font-mono normal-case text-ink-3">{code}</span></div>
-      <p className="whitespace-pre-wrap rounded-xl bg-canvas p-2.5 text-[13.5px]">{text}</p>
-      <button className="btn-ghost mt-1.5 h-9 min-h-9 text-[13px]" onClick={async () => { await copyText(text); toast(`Pesan ${n} copied`); }}>Copy pesan {n}</button>
-    </div>
-  );
-  return (
-    <>
-      <Step n={1} text={invite.parts[0]} code={invite.codes[0]} />
-      <p className="mt-3 rounded-xl bg-gold-soft px-3 py-2 text-[13px] text-gold">🎥 Kirim 1 video di sini</p>
-      <Step n={2} text={invite.parts[1]} code={invite.codes[1]} />
-    </>
-  );
-}
-
 function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
   const { lead } = d;
   const [notes, setNotes] = useState(lead.notes);
@@ -625,7 +638,7 @@ function Actions({ d, patch }: { d: RoomData; patch: Patch }) {
         <div className="eyebrow mb-1 mt-3">Next step</div>
         <input className="input" value={nextStep} onChange={(e) => setNextStep(e.target.value)} placeholder="e.g. Reminder H-1" />
         {nextStep !== lead.next_step && <button className="btn-primary mt-2 h-9 min-h-9" onClick={() => patch({ next_step: nextStep }, 'Next step saved')}>Save</button>}
-        {d.invite ? <InviteSteps invite={d.invite} /> : (
+        {d.invite ? <p className="mt-3 text-xs text-ink-3">Reminder Jesselton ada di chat (pesan 1 → video → pesan 2).</p> : (
           <>
             <div className="eyebrow mb-1 mt-3">Reminder (copy, send yourself)</div>
             <textarea className="input min-h-32 text-[13.5px]" value={reminder} onChange={(e) => setReminder(e.target.value)} placeholder="No reminder needed" />
