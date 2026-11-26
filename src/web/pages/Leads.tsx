@@ -4,7 +4,7 @@ import type { EventCode } from '../../../config/events';
 import { sessionInfo } from '../../../config/events';
 import type { LeadView } from '../../domain/dashboard';
 import { EXCEL_COLUMNS, leadToExcelRow } from '../../domain/sheet-row';
-import { guestsLabel, WA_STATUS_LABEL, type LeadState } from '../../domain/types';
+import { guestsLabel, WA_STATUS_LABEL, WA_STATUS_RANK, type LeadState } from '../../domain/types';
 import { api } from '../api';
 import { Avatar, ErrorBox, EventChip, EventDot, Loading, STATE_EN, useView, WA_TONE, WaChip } from '../shared';
 
@@ -69,7 +69,7 @@ function useLeads() {
     .filter((l) => (ev === 'ALL' || l.event === ev) && (!state || l.wa_status === state)
       && (!q || `${l.full_name} ${l.call_name} ${l.phone_e164}`.toLowerCase().includes(q.toLowerCase())))
     // Server order: Roadshow then Jesselton, action needed first, Roadshow by visit day (see sortKey).
-    .sort((a, b) => a.sort_key.localeCompare(b.sort_key)), [leads, ev, q, state]);
+    .sort((a, b) => a.event.localeCompare(b.event) * -1 || WA_STATUS_RANK[a.wa_status] - WA_STATUS_RANK[b.wa_status] || a.sort_key.localeCompare(b.sort_key)), [leads, ev, q, state]);
   const count = (e: EvFilter) => (leads ?? []).filter((l) => e === 'ALL' || l.event === e).length;
   return { leads, err, list, refresh, ev, setEv, q, setQ, state, setState, count };
 }
@@ -136,9 +136,10 @@ export function LeadsPage() {
             <table className="w-full table-fixed text-left text-[14px]">
               <thead className="hidden border-b border-line bg-canvas/60 text-[12px] text-ink-3 md:table-header-group">
                 <tr>
-                  <th className="w-[30%] px-4 py-2.5 font-medium">Client</th>
-                  <th className="w-[12%] px-3 py-2.5 font-medium">Event</th>
-                  <th className="w-[13%] px-3 py-2.5 font-medium">Status</th>
+                  <th className="w-[38%] px-4 py-2.5 font-medium lg:w-[30%]">Client</th>
+                  {/* Tablet: rows are already grouped under event headers, so the Event column waits for lg. */}
+                  <th className="hidden w-[12%] px-3 py-2.5 font-medium lg:table-cell">Event</th>
+                  <th className="w-[20%] px-3 py-2.5 font-medium lg:w-[14%]">Status</th>
                   <th className="hidden w-[17%] px-3 py-2.5 font-medium lg:table-cell">Attendance</th>
                   <th className="px-3 py-2.5 font-medium">Last message</th>
                   <th className="w-20 px-4 py-2.5 text-right font-medium">Updated</th>
@@ -169,7 +170,7 @@ export function LeadsPage() {
                           <span className="shrink-0 text-[11.5px] tabular-nums text-ink-3 md:hidden">{relTime(l.room.last_at ?? l.created_at)}</span>
                         </Link>
                       </td>
-                      <td className="hidden px-3 py-3 md:table-cell"><EventChip event={l.event} /></td>
+                      <td className="hidden px-3 py-3 lg:table-cell"><EventChip event={l.event} /></td>
                       <td className="hidden px-3 py-3 md:table-cell"><WaChip status={l.wa_status} />{l.next_step && <span className="mt-1 block truncate text-[11.5px] text-ink-3" title={l.next_step}>{l.next_step}</span>}</td>
                       <td className="hidden truncate px-3 py-3 text-[13px] text-ink-2 lg:table-cell">{attendance(l)}</td>
                       <td className={`hidden truncate px-3 py-3 text-[13px] md:table-cell ${w ? 'text-ink' : 'text-ink-3'}`}>{l.room.last_text ? preview(l) : '—'}</td>

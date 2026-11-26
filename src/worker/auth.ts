@@ -65,9 +65,20 @@ export const requireAuth: MiddlewareHandler<{ Bindings: Env }> = async (c, next)
   await next();
 };
 
-/** 5 attempts / 15 min / IP. Returns false when blocked. */
-export async function rateLimitLogin(kv: KVNamespace, ip: string): Promise<boolean> {
+/** In-memory fallback when KV is not bound (per Worker instance, best effort). */
+const memHits = new Map<string, { n: number; until: number }>();
+
+/** 5 attempts / 15 min / IP. Returns false when blocked. Uses KV when bound, memory otherwise. */
+export async function rateLimitLogin(kv: KVNamespace | undefined, ip: string, now = Date.now()): Promise<boolean> {
   const k = `rl:${ip}`;
+  if (!kv) {
+    const h = memHits.get(k);
+    if (!h || h.until < now) { memHits.set(k, { n: 1, until: now + 15 * 60_000 }); return true; }
+    if (h.n >= 5) return false;
+    h.n++;
+    if (memHits.size > 10_000) memHits.clear();
+    return true;
+  }
   const n = Number((await kv.get(k)) ?? 0);
   if (n >= 5) return false;
   await kv.put(k, String(n + 1), { expirationTtl: 15 * 60 });

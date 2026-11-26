@@ -43,6 +43,19 @@ if (cmd === 'backup') {
     if (!msgs.length) continue;
     for (const l of all.filter((x) => x.phone_e164 === phone)) console.log(l.event, l.full_name, (await req('PUT', `/api/leads/${l.lead_id}/whatsapp`, { messages: msgs })).added);
   }
+} else if (cmd === 'wafull') {
+  // Full replace: delete every stored message of the lead, then store exactly what WhatsApp Web shows.
+  const svc = makeServices(env);
+  const chats = JSON.parse(readFileSync(arg, 'utf8')) as Record<string, any[]>;
+  const all = (await req('GET', '/api/leads')).leads as any[];
+  for (const [phone, msgs] of Object.entries(chats)) {
+    for (const l of all.filter((x) => x.phone_e164.replace(/\D/g, '') === phone)) {
+      const old = await svc.repo.messagesFor(l.lead_id);
+      await svc.repo.messages.updateMany('msg_id', new Map(old.map((m) => [m.msg_id, { deleted: 'TRUE' }])));
+      if (!msgs.length) { console.log(l.event, l.full_name, old.length, '-> 0 (kosong)'); continue; }
+      console.log(l.event, l.full_name, old.length, '->', (await req('PUT', `/api/leads/${l.lead_id}/whatsapp`, { messages: msgs })).added);
+    }
+  }
 } else if (cmd === 'patch') {
   // [{ id, ...fields }]
   for (const p of JSON.parse(readFileSync(arg, 'utf8')) as any[]) { const { id, ...b } = p; await req('PATCH', `/api/leads/${id}`, b); }

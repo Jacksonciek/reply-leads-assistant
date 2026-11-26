@@ -52,7 +52,7 @@ export function SettingsPage() {
       </div>
       <div className="card space-y-2">
         <h2 className="font-semibold">Test connections</h2>
-        <div className="flex gap-2"><button className="btn-ghost" onClick={() => test('sheets')}>Test Google Sheets</button><button className="btn-ghost" onClick={() => test('gemini')}>Test Gemini</button></div>
+        <div className="flex flex-wrap gap-2"><button className="btn-ghost" onClick={() => test('sheets')}>Test Google Sheets</button><button className="btn-ghost" onClick={() => test('gemini')}>Test Gemini</button></div>
         {Object.entries(health).map(([k, m]) => <pre key={k} className="whitespace-pre-wrap rounded-md bg-canvas p-2 font-sans text-xs">{k}: {m}</pre>)}
       </div>
       <div className="card space-y-2">

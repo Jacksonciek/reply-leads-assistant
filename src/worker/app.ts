@@ -1,6 +1,9 @@
 // HTTP API (Hono). Everything under /api requires a session except login.
 import { Hono, type Context } from 'hono';
 import { getCookie } from 'hono/cookie';
+import { bodyLimit } from 'hono/body-limit';
+import { csrf } from 'hono/csrf';
+import { HTTPException } from 'hono/http-exception';
 import { z, ZodError } from 'zod';
 import { EVENT_CODES, type EventCode } from '../../config/events';
 import { TEMPLATE_VARS } from '../../config/templates';
@@ -55,7 +58,7 @@ const LeadPatchZ = z.object({
   opt_out: z.boolean(),
   no_whatsapp: z.boolean(),
   needs_attention: z.boolean(),
-  wa_status: z.enum(['', 'NO_REPLY', 'NO_WA', 'CONFIRMED', 'UNSURE', 'CANNOT_ATTEND', 'BAD_LEAD']),
+  wa_status: z.enum(['', 'NO_REPLY', 'NO_HOPE', 'NO_WA', 'CANNOT_ATTEND', 'BAD_LEAD', 'CONFIRMED']),
   next_step: z.string().max(500),
   reminder_text: z.string().max(5000),
 }).partial();
@@ -167,26 +170,36 @@ function view(l: Lead, all: Message[], now: Date): LeadView {
 export function createApp(factory: ServicesFactory, clock: () => Date = () => new Date()) {
   const app = new Hono<{ Bindings: Env; Variables: { svc: Services } }>();
 
+  // Blocks cross-site form/text posts (CSRF), on top of the SameSite=Strict cookie.
+  app.use('/api/*', csrf());
+  app.use('/api/*', bodyLimit({ maxSize: 5 * 1024 * 1024, onError: (c) => err(c as C, 413, 'too_large', 'Data terlalu besar (maks 5 MB)') }));
   app.use('/api/*', async (c, next) => {
+    // Mutating requests must be JSON, so a plain HTML form from another site can never reach a handler.
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && !(c.req.header('content-type') ?? '').includes('application/json')) {
+      return err(c as C, 415, 'bad_content_type', 'Request harus berupa JSON');
+    }
     c.set('svc', factory(c.env));
     await next();
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Referrer-Policy', 'no-referrer');
+    c.header('X-Frame-Options', 'DENY');
     c.header('Cache-Control', 'no-store');
   });
 
   app.onError((e, c) => {
+    if (e instanceof HTTPException) return err(c as C, e.status, 'forbidden', e.status === 403 ? 'Request ditolak' : e.message);
     if (e instanceof ZodError) return err(c as C, 400, 'validation', e.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
     if (e instanceof NotFound) return err(c as C, 404, 'not_found', e.message);
     if (e instanceof GenerateError) return err(c as C, 400, e.code, e.message);
+    // Log the detail on the server only; never echo database/internal errors to the browser.
     console.error('api error', (e as Error).message.slice(0, 300));
-    return err(c as C, 500, 'server', `Terjadi kesalahan: ${(e as Error).message.slice(0, 200)}`);
+    return err(c as C, 500, 'server', 'Terjadi kesalahan di server. Coba lagi sebentar.');
   });
 
   // ---------- auth ----------
   app.post('/api/auth/login', async (c) => {
     const ip = c.req.header('cf-connecting-ip') ?? 'local';
-    if (c.env.KV && !(await rateLimitLogin(c.env.KV, ip))) return err(c as C, 429, 'rate_limited', 'Too many attempts. Try again in 15 minutes.');
+    if (!(await rateLimitLogin(c.env.KV, ip))) return err(c as C, 429, 'rate_limited', 'Too many attempts. Try again in 15 minutes.');
     const { password } = z.object({ password: z.string().max(200) }).parse(await c.req.json());
     if (!c.env.SESSION_SECRET) return err(c as C, 500, 'no_secret', 'SESSION_SECRET belum diisi');
     const role: Role | null = (await passwordMatches(c.env.SESSION_SECRET, password, c.env.ADMIN_PASSWORD)) ? 'admin'

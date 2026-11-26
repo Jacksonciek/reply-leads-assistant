@@ -319,8 +319,7 @@ describe('Jesselton invitation (JC-INV / JC-FIX)', () => {
   it('picks the template set from the WhatsApp status', () => {
     expect(inv({ wa_status: 'CONFIRMED', session: 'S2', guests: 2, guests_bucket: '' })?.codes).toEqual(['JC-FIX-1', 'JC-FIX-2']);
     expect(inv({ wa_status: 'NO_REPLY' })?.codes).toEqual(['JC-INV-1', 'JC-INV-2']);
-    expect(inv({ wa_status: 'UNSURE' })?.codes).toEqual(['JC-INV-1', 'JC-INV-2']);
-    for (const s of ['BAD_LEAD', 'NO_WA', 'CANNOT_ATTEND', ''] as const) expect(inv({ wa_status: s })).toBeNull();
+    for (const s of ['BAD_LEAD', 'NO_HOPE', 'NO_WA', 'CANNOT_ATTEND', ''] as const) expect(inv({ wa_status: s })).toBeNull();
     expect(jesseltonInvite(emptyLead({ event: 'ROADSHOW', wa_status: 'NO_REPLY' }), TPL, NOW)).toBeNull();
   });
 

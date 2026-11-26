@@ -26,7 +26,7 @@ export const EXCEL_COLUMNS: Record<EventCode, string[]> = {
 };
 
 const waStatus = (v: string | undefined): WaStatus => {
-  const s = str(v).trim() as WaStatus;
+  const s = (str(v).trim() === 'UNSURE' ? 'NO_REPLY' : str(v).trim()) as WaStatus; // UNSURE was removed
   return s in WA_STATUS_LABEL ? s : '';
 };
 

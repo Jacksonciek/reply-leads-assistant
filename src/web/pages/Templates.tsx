@@ -63,10 +63,10 @@ export function TemplatesPage() {
       <ul className="card divide-y divide-line p-0">
         {list.map((t) => (
           <li key={t.code}>
-            <button className="flex min-h-14 w-full items-center gap-2 px-4 py-2 text-left" onClick={() => { setSel(t); setBody(t.body); }}>
-              <span className="w-32 shrink-0 font-mono text-sm">{t.code}</span>
-              <span className="flex-1 text-xs text-ink-2">{t.description}</span>
-              <span className={`chip ${t.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{t.status === 'APPROVED' ? 'Approved' : 'Needs review'}</span>
+            <button className="flex min-h-14 w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-left sm:flex-nowrap" onClick={() => { setSel(t); setBody(t.body); }}>
+              <span className="min-w-0 break-all font-mono text-sm sm:w-32 sm:shrink-0">{t.code}</span>
+              <span className="order-last basis-full text-xs text-ink-2 sm:order-none sm:flex-1 sm:basis-auto">{t.description}</span>
+              <span className={`chip ml-auto shrink-0 sm:ml-0 ${t.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{t.status === 'APPROVED' ? 'Approved' : 'Needs review'}</span>
             </button>
           </li>
         ))}

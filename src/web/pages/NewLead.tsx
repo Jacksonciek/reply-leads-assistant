@@ -88,7 +88,7 @@ export function NewLeadPage() {
       <div className="segmented flex w-full p-1">
         {(['ROADSHOW', 'JESSELTON'] as EventCode[]).map((ev) => (
           <button key={ev} type="button" aria-pressed={f.event === ev} onClick={() => setF((x) => ({ ...x, event: ev, source: ev === 'ROADSHOW' ? 'Agent' : x.source === 'Agent' ? 'Meta' : x.source }))}
-            className={`seg flex flex-1 items-center justify-center gap-2 py-2 text-[14px] ${f.event === ev ? 'seg-on' : ''}`}>
+            className={`seg flex min-w-0 flex-1 items-center justify-center gap-2 py-2 text-[14px] ${f.event === ev ? 'seg-on' : ''}`}>
             <span className={`h-2 w-2 rounded-full ${ev === 'ROADSHOW' ? 'bg-navy' : 'bg-forest'}`} />{ev === 'ROADSHOW' ? 'Medan Roadshow' : 'Jesselton'}
           </button>
         ))}
@@ -166,7 +166,7 @@ export function NewLeadPage() {
           <div className="eyebrow mb-2">Current chat status</div>
           <div className="segmented grid w-full grid-cols-2 gap-0.5">
             {STATUSES.map(([k, v]) => (
-              <button key={k} type="button" aria-pressed={f.state === k} onClick={() => set('state', k)} className={`seg py-2 ${f.state === k ? 'seg-on' : ''}`}>{v}</button>
+              <button key={k} type="button" aria-pressed={f.state === k} onClick={() => set('state', k)} className={`seg whitespace-normal py-2 leading-tight ${f.state === k ? 'seg-on' : ''}`}>{v}</button>
             ))}
           </div>
         </div>

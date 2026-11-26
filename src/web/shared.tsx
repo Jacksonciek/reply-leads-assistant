@@ -65,12 +65,12 @@ export function StateChip({ state }: { state: LeadState }) {
 
 /** Confirmed = green, bad lead = red (also used to tint rows). */
 export const WA_TONE: Record<Exclude<WaStatus, ''>, { chip: string; row: string }> = {
-  CONFIRMED: { chip: 'bg-emerald-100 text-emerald-800', row: 'bg-emerald-50/70' },
-  BAD_LEAD: { chip: 'bg-red-100 text-red-700', row: 'bg-red-50/70' },
-  UNSURE: { chip: 'bg-amber-50 text-amber-800', row: '' },
-  NO_REPLY: { chip: 'bg-orange-50 text-orange-800', row: '' },
-  NO_WA: { chip: 'bg-black/[0.05] text-ink-3', row: '' },
-  CANNOT_ATTEND: { chip: 'bg-slate-100 text-slate-700', row: '' },
+  NO_REPLY: { chip: 'bg-black/[0.05] text-ink-2', row: '' },
+  NO_HOPE: { chip: 'bg-pink-200 text-pink-900', row: 'bg-pink-100' },
+  NO_WA: { chip: 'bg-gray-300 text-gray-800', row: 'bg-gray-200' },
+  CANNOT_ATTEND: { chip: 'bg-yellow-200 text-yellow-900', row: 'bg-yellow-100' },
+  BAD_LEAD: { chip: 'bg-red-800 text-white', row: 'bg-red-300' },
+  CONFIRMED: { chip: 'bg-emerald-600 text-white', row: 'bg-emerald-200' },
 };
 export function WaChip({ status }: { status: WaStatus }) {
   if (!status) return null;

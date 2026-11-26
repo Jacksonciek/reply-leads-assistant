@@ -9,9 +9,9 @@ import { ErrorBox, EventDot, EVENT_LABEL, Loading, useView } from '../shared';
 /** The four numbers per event. */
 const METRICS: { status: Exclude<WaStatus, ''>; dot: string }[] = [
   { status: 'NO_REPLY', dot: 'bg-orange-500' },
-  { status: 'NO_WA', dot: 'bg-ink-3' },
+  { status: 'NO_HOPE', dot: 'bg-pink-400' },
+  { status: 'BAD_LEAD', dot: 'bg-red-700' },
   { status: 'CONFIRMED', dot: 'bg-emerald-500' },
-  { status: 'UNSURE', dot: 'bg-amber-400' },
 ];
 
 export function HomePage() {

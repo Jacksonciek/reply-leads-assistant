@@ -88,7 +88,7 @@ export function jesseltonInvite(
 ): InviteMessage | null {
   if (lead.event !== 'JESSELTON') return null;
   const codes: [string, string] | null = lead.wa_status === 'CONFIRMED' ? ['JC-FIX-1', 'JC-FIX-2']
-    : lead.wa_status === 'NO_REPLY' || lead.wa_status === 'UNSURE' ? ['JC-INV-1', 'JC-INV-2'] : null;
+    : lead.wa_status === 'NO_REPLY' ? ['JC-INV-1', 'JC-INV-2'] : null;
   if (!codes) return null;
   try {
     const vars = buildVars(lead, events, now);

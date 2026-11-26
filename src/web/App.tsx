@@ -88,14 +88,14 @@ function ViewerApp({ canSignOut }: { canSignOut: boolean }) {
       <ToastProvider>
         <div className={`flex flex-col ${ws ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
           <header className={`glass sticky top-0 z-30 border-b border-black/[0.06] ${ws ? 'hidden md:block' : ''}`}>
-            <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-4 px-4">
-              <Link to="/user" className="flex items-center gap-2.5"><Mark /><span className="hidden text-[15px] font-semibold tracking-tight sm:inline">Replies</span></Link>
-              <nav className="ml-2"><div className="segmented">
-                {nav.map((n) => <Link key={n.to} to={n.to} className={`seg ${active(n.to) ? 'seg-on' : ''}`}>{n.label}</Link>)}
+            <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-2 px-4 sm:gap-4">
+              <Link to="/user" className="flex shrink-0 items-center gap-2.5"><Mark /><span className="hidden text-[15px] font-semibold tracking-tight sm:inline">Replies</span></Link>
+              <nav className="min-w-0 sm:ml-2"><div className="segmented">
+                {nav.map((n) => <Link key={n.to} to={n.to} className={`seg px-2.5 sm:px-3 ${active(n.to) ? 'seg-on' : ''}`}>{n.label}</Link>)}
               </div></nav>
               <span className="flex-1" />
-              <span className="chip bg-black/[0.05] text-ink-3">View only</span>
-              {canSignOut && <button className="btn-ghost h-9 min-h-9" onClick={signOut}>Sign out</button>}
+              <span className="chip hidden bg-black/[0.05] text-ink-3 sm:inline-flex">View only</span>
+              {canSignOut && <button className="btn-ghost h-9 min-h-9 shrink-0 px-3" onClick={signOut}>Sign out</button>}
             </div>
           </header>
           {ws ? (

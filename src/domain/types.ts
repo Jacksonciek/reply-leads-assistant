@@ -8,15 +8,19 @@ export type Session = 'S1' | 'S2' | 'UNDECIDED' | 'NONE';
 export type GuestsBucket = '' | '3+' | 'unknown';
 
 /** Where the WhatsApp conversation stands (set from reading the chat). '' = not checked yet. */
-export type WaStatus = '' | 'NO_REPLY' | 'NO_WA' | 'CONFIRMED' | 'UNSURE' | 'CANNOT_ATTEND' | 'BAD_LEAD';
+// Follows the "Notes final" column of the Excel file. Pink = no hope, grey = no WA, yellow = cannot attend,
+// dark red = bad lead, green = replied/positive.
+export type WaStatus = '' | 'NO_REPLY' | 'NO_HOPE' | 'NO_WA' | 'CANNOT_ATTEND' | 'BAD_LEAD' | 'CONFIRMED';
 export const WA_STATUS_LABEL: Record<Exclude<WaStatus, ''>, string> = {
-  NO_REPLY: 'Belum balas',
-  NO_WA: 'No WhatsApp',
-  CONFIRMED: 'Terkonfirmasi',
-  UNSURE: 'Balas, belum pasti',
-  CANNOT_ATTEND: 'Tidak bisa hadir',
+  NO_REPLY: 'Tunggu balasan',
+  NO_HOPE: 'Tidak ada balasan',
+  NO_WA: "Can't contact by WA",
+  CANNOT_ATTEND: 'Cannot attend',
   BAD_LEAD: 'Bad lead',
+  CONFIRMED: 'Sudah respon',
 };
+/** List order: waiting first, then pink (no hope), then bad lead, green last. */
+export const WA_STATUS_RANK: Record<WaStatus, number> = { '': 0, NO_REPLY: 0, NO_HOPE: 1, NO_WA: 1, CANNOT_ATTEND: 1, BAD_LEAD: 2, CONFIRMED: 3 };
 
 export interface Lead {
   lead_id: string;

@@ -35,7 +35,7 @@ function setup(llmOut?: Partial<LlmOutput>, now: Date = NOW) {
     if (sc) cookie = sc.split(';')[0];
     return { status: res.status, json: (await res.json()) as any };
   };
-  return { store, req, calls, login: () => req('POST', '/api/auth/login', { password: 'rahasia' }) };
+  return { store, req, calls, app, env, cookie: () => cookie, login: () => req('POST', '/api/auth/login', { password: 'rahasia' }) };
 }
 
 describe('auth', () => {
@@ -65,6 +65,20 @@ describe('auth', () => {
       ['GET', '/api/leads/ABC123/render/B6'], ['POST', '/api/import/commit']] as const) {
       expect((await t.req(m, p, m === 'GET' ? undefined : {})).status, `${m} ${p}`).toBe(403);
     }
+  });
+  it('rejects cross-site form posts and non-JSON writes', async () => {
+    const t = setup();
+    await t.login();
+    const post = (headers: Record<string, string>) => t.app.request('/api/leads', { method: 'POST', headers: { cookie: t.cookie(), ...headers }, body: '{}' }, t.env);
+    expect((await post({ 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example' })).status).toBe(403);
+    expect((await post({ 'content-type': 'text/plain' })).status).toBe(403);
+    expect((await post({ 'content-type': 'application/xml' })).status).toBe(415);
+  });
+  it('blocks login brute force even without KV', async () => {
+    const t = setup();
+    delete (t.env as any).KV;
+    for (let i = 0; i < 5; i++) await t.req('POST', '/api/auth/login', { password: 'x' }, '7.7.7.7');
+    expect((await t.req('POST', '/api/auth/login', { password: 'rahasia' }, '7.7.7.7')).status).toBe(429);
   });
   it('admin login returns admin role', async () => {
     const t = setup();
